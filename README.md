@@ -36,6 +36,20 @@ once the simulations are finished the output file is located at ``output/TB`` an
   
 where ``[microphysics_parameters]`` is a sequence of specifications regarding the parametrization for atmospheric hydrometeors like rain, graupel, snow and ice. The sufix ``_fxxxx`` is just an indicator that the file contains simulation for multiple frequencies.
 
+# Structure of directories
+This repository is distributed as follows:
+
+    ./
+    ├── bin
+    ├── input_exemplar
+    ├── obj
+    ├── output
+    │   ├── TB
+    │   └── tmp
+    ├── scripts
+    └── src
+
+8 directories where ``./bin`` contains the binary executables and input parameter file, ``./src`` has all the source codes, ``./obj`` host the object files from the source codes, ``./output/TB`` is where netCDF output files with the simulations is stored, ``./output/tmp`` is a temporal folder to host auxiliary files during running time, and ``./input_exemplar`` can contain examples of input parameter file with different set of configurations. 
 
 ---
 For more info contact:
