@@ -1,0 +1,16 @@
+#
+# A run of RT3/RT4 for the CRM or Radiosondes input
+#
+rm ../output/tmp/*PH* -f
+rm ../output/tmp/Pro* -f 
+rm -f ../obj/*.o
+#rm Exp*
+make -C ../Makefile
+./RS_RT3_run <<EOF>/dev/null
+'/home/pga082/GFI/data/RASOBS/polargmo/RS_Y2013-2013_M09-09_D01-31_H00-18.nc'	 # name of profiles file
+1 1 1 1 2 0.0 2000.0  #nx-in nx-fin ny_in ny_fin n_freq tau_in tau_fin
+27.2   51.260  # 23.840   25.440   26.240   27.840   31.400   51.260   52.280   53.860   54.90   56.660   57.300   58.000     # frequency
+.true.  # gas extinction
+'Exp' 7.6 'MaxGa' 0.2 'Exp' 4.0 'MaxGa' 'Exp' 8.0
+EOF
+
