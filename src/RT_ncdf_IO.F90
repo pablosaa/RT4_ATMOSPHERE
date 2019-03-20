@@ -497,7 +497,7 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,NTIME,XN,YN,&
   status = nf90_put_att(ncid,NF90_GLOBAL,"Input_data", input_file)
   status = nf90_put_att(ncid,NF90_GLOBAL,"Wyosonde_station", trim(origin_str))
   status = nf90_put_att(ncid,NF90_GLOBAL,"Hydrometeor_Microphysics", micro_phys)
-  status = nf90_put_att(ncid,NF90_GLOBAL,"Creator","Pablo.Saavedra@uib.no")
+  status = nf90_put_att(ncid,NF90_GLOBAL,"Contact","Pablo.Saavedra@uib.no")
   status = nf90_put_att(ncid,NF90_GLOBAL,"Institution","Geophysical Institute, University of Bergen")
 
   ! End definitions
@@ -531,7 +531,7 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   
   implicit none
 
-  ! Interface to the c code for Unix time retrieval:
+  ! Interface to the C code for Unix time retrieval:
   interface
      function F2UnixTime(datum) result(val) bind(c, name='F2UnixTime')
        use, intrinsic :: iso_c_binding
@@ -548,7 +548,7 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   integer :: status, ncid, VarId, idx, idf
   integer :: nDims, unlimdimid, freq_id
   character(len=len(OUT_FILE)+3) :: ncfile
-  character(len=40) :: dim_name, micro_phys
+  character(len=40) :: dim_name
   integer :: x_grid, y_grid, i_freq, freq_len, NTIME
   real(kind=8) :: AllFreq(30)
   real(kind=8), dimension(NUMMU) :: ZENITH_THETA
@@ -565,19 +565,22 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
 
   ! * grid indices:
   idx = scan(OUT_FILE,'x',back=.true.)+1
+  if(idx.eq.1) stop 'no x000_ found in string passed'
   read(OUT_FILE(idx:),'(I03XI03)') x_grid, y_grid
 
   ! * Date and * getting microphysics from OUT_FILE:
   date = 0
-  idx = scan(OUT_FILE,'/',back=.true.)+1
+  idx = scan(OUT_FILE,'=',back=.true.)+1
+  if(idx.eq.1) stop 'no separator = found in string passed'
   idf = scan(OUT_FILE,'x',back=.true.)
-  read(OUT_FILE(idx:idf-1),'(5X4I02A)') date(1:4), micro_phys
+  read(OUT_FILE(idx:idf-1),'(4I02)') date(1:4) !, micro_phys  ! '(5X4I02A)'
   date(1) = date(1)+2000
   TIMELINE = F2UnixTime(date)
 
   ! constructing netCDF file to write data:
-  ncfile = OUT_FILE(1:idx+4)//'_'//trim(micro_phys)//'_fxxxx.nc'
-  
+  idf = scan(OUT_FILE,'=',back=.true.)-1
+  ncfile = OUT_FILE(:idf)
+
   status = NF90_OPEN(ncfile,MODE=NF90_WRITE,NCID=ncid)
   if(status/=NF90_NOERR) stop 'Opening the NetCDF to add in STORENCDF()'
 

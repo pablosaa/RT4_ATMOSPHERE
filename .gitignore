@@ -1,10 +1,8 @@
 # temporal directories
-./output/tmp
 ./output/tmp/PH*
 ./output/tmp/Profile*
 
 # output netCDF files for Brightness temperatures
-./output/TB
 ./output/TB/*.nc
 
 # some testing files in source directory

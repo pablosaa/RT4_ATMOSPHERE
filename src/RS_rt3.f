@@ -37,7 +37,7 @@ C                    **  RADTRAN I/O SPECIFICATIONS  **
        REAL*8    DIRECT_FLUX, DIRECT_MU
       real*8      freq(20),lam,gammln     ! PSG: making FREQ vector for many frequencies
       character*2 year,month,day, hour    ! PSG: including hour
-      character*8  date_str               ! PSG: was character*6  date_str
+      character*8  date_str, sim_tag      ! PSG: was character*6  date_str, new sim_tag
        INTEGER     MAXLEG, NLEGEN, NUMRAD,NLEGENcw,NLEGENci,
      $NLEGENgr,NLEGENsn,NLEGENrr,aziorder, NUMAZIMUTHS,SRC_CODE
       REAL*8        RAD1, RAD2,refre,refim,SP
@@ -237,59 +237,60 @@ C     !PSG: Calling the NetCDF routine to read data
         OUTLEVELS(2)=nlyr+1     ! PSG: N_lay_cut+1
 
 
-           write(SP_str(1:3),'(f3.1)')SP
+        write(SP_str(1:3),'(f3.1)')SP
 c     write(18,*)'str',H_str
 
-           if (N_0snowDsnow.le.9.95d0) then
-              write(N0snowstr,'(f3.1)')N_0snowDsnow
-           else
-              write(N0snowstr,'(f3.0)')N_0snowDsnow
-           endif 
-           
-           if (N_0rainD.le.9.95) then
-              write(N0rainstr,'(f3.1)')N_0rainD
-           else
-              write(N0rainstr,'(f3.0)')N_0rainD
-           endif      
-           if (N_0grauDgrau.le.9.95) then
-              write(N0graustr,'(f3.1)')N_0grauDgrau
-           else
-              write(N0graustr,'(f3.0)')N_0grauDgrau
-           endif               
+        if (N_0snowDsnow.le.9.95d0) then
+           write(N0snowstr,'(f3.1)')N_0snowDsnow
+        else
+           write(N0snowstr,'(f3.0)')N_0snowDsnow
+        endif 
+        
+        if (N_0rainD.le.9.95) then
+           write(N0rainstr,'(f3.1)')N_0rainD
+        else
+           write(N0rainstr,'(f3.0)')N_0rainD
+        endif      
+        if (N_0grauDgrau.le.9.95) then
+           write(N0graustr,'(f3.1)')N_0grauDgrau
+        else
+           write(N0graustr,'(f3.0)')N_0grauDgrau
+        endif               
 
-           micro_str=SD_snow//N0snowstr//EM_snow//SP_str//
-     $          SD_grau//N0graustr//EM_grau//SD_rain//N0rainstr
+        micro_str=SD_snow//N0snowstr//EM_snow//SP_str//
+     $       SD_grau//N0graustr//EM_grau//SD_rain//N0rainstr
 
 C     NetCDF output file definition (creating one Ncdf file per frequency):
-           NCDFOUT='../output/TB/RT3TB_'//micro_str//'_'
-     $       //'fxxxx.nc' !//frq_str//'.nc'
+        j_temp = scan(input_file,"/",back=.true.)+1
+        
+        NCDFOUT='../output/TB/RT3TB_'//trim(input_file(j_temp:)) !micro_str//'_'
 
-           write(*,*) 'Creating NetCDF '//trim(NCDFOUT)
+        write(*,*) 'Creating NetCDF '//trim(NCDFOUT)
            
-           call createncdf(len_trim(NCDFOUT),trim(NCDFOUT),
-     $          NUMMU,n_freq,NSTOKES,nlyr,ntime,
-     $          ngridx,ngridy,hgt_tmp(1,1,1:nlyr,1),
-     $          FREQ(1:n_freq),input_file,micro_str,
-     $          real(hgt_tmp(:ngridx,:ngridy,0,1),4),
-     $          lat,lon,trim(origin_str))
+        call createncdf(len_trim(NCDFOUT),trim(NCDFOUT),
+     $       NUMMU,n_freq,NSTOKES,nlyr,ntime,
+     $       ngridx,ngridy,hgt_tmp(1,1,1:nlyr,1),
+     $       FREQ(1:n_freq),input_file,micro_str,
+     $       real(hgt_tmp(:ngridx,:ngridy,0,1),4),
+     $       lat,lon,trim(origin_str))
 
 C     !PSG: -- end of NetCDF reading routine
-           do 777 ifreq=1,n_freq ! PSG: include Frequency loop
-              if (freq(ifreq).gt.100.d0) then
-                 write(frq_str,'(f6.2)') FREQ(ifreq)
-                 write(frq_idx,'(I6.6)') ifreq
-              else
-                 write(frq_str,'(f5.2)') FREQ(ifreq)
-                 write(frq_idx,'(I5.5)') ifreq
-              endif
+        do 777 ifreq=1,n_freq   ! PSG: include Frequency loop
+           if (freq(ifreq).gt.100.d0) then
+              write(frq_str,'(f6.2)') FREQ(ifreq)
+              write(frq_idx,'(I6.6)') ifreq
+           else
+              write(frq_str,'(f5.2)') FREQ(ifreq)
+              write(frq_idx,'(I5.5)') ifreq
+           endif
 
 c     write(*,29) frq_str  
-
+           
 C     !PSG: Passing temporal variables to old variables (no time)
-              i_time = 0
-              call omp_set_num_threads(4)
-!$OMP PARALLEL NUM_THREADS(4)
-!$OMP DO
+           i_time = 0
+           call omp_set_num_threads(4)
+C$OMP PARALLEL NUM_THREADS(4)
+C$OMP DO
         DO 656, timeidx=1,ntime
            write(*,*) 'running on thread: ', OMP_GET_THREAD_NUM(),
      $          OMP_GET_MAX_THREADS()
@@ -476,8 +477,8 @@ C     $ frq_str
 c 1017          format(i2,1x,f3.1,1x,f5.1,1x,f6.1)
 c          
 cc     INITIALIZATION OF LEGENDRE COEFFICIENTS  CCCCCCCCCCC          
-            do nz = 1,nlyr   ! PSG:  N_lay_cut  
-               write(Nzstr,'(i3.3)') Nz ! PSG: '(i2.2)'
+       do 1009 nz = 1,nlyr      ! PSG:  N_lay_cut  
+          write(Nzstr,'(i3.3)') Nz ! PSG: '(i2.2)'
 
              NLegen=0           
              NLEGENcw=0
@@ -786,31 +787,31 @@ C
 
 C   summing up the Legendre coefficient               
         
-         if ( kexttot(nx,ny,nz) .le. 0.0 .or.   !
-     $ salbtot(nx,ny,nz) .le. 0.0) then
-         FILE_PH(nz)=''
-c       writing no file            
+        if ( kexttot(nx,ny,nz) .le. 0.0 .or. !
+     $       salbtot(nx,ny,nz) .le. 0.0) then
+           FILE_PH(nz)=''
+c     writing no file            
 
-          else   !there are hydrometeor present : a PH file is needed    
+        else                    !there are hydrometeor present : a PH file is needed    
 
-        FILE_PH(nz)='../output/tmp/PHlev'//Nzstr//'f'//frq_str  ! PSG: add 'temp/'
+           FILE_PH(nz)='../output/tmp/PHlev'//Nzstr//'f'//frq_str ! PSG: add 'temp/'
 
-c        write(18,*)'apri file',Nlegen,NLEGENhl,
+c     write(18,*)'apri file',Nlegen,NLEGENhl,
 c     $ NLEGENcw,NLEGENci,NLEGENrr,NLEGENsn,NLEGENgr
-         OPEN(unit=21,file =file_PH(nz), STATUS = 'unknown',
-     $ form='FORMATTED')
-          write(21,*) kexttot(nx,ny,nz),'   EXINCTION'
-         write(21,*)  kexttot(nx,ny,nz)* salbtot(nx,ny,nz),
-     $ '  SCATTERING'
-        write(21,*) salbtot(nx,ny,nz),'   SINGLE SCATTERING ALBEDO'
-        write(21,*) Nlegen-1,'      DEGREE OF LEGENDRE SERIES'
+           OPEN(unit=31,file =file_PH(nz), STATUS = 'unknown',
+     $          form='FORMATTED')
+           write(31,*) kexttot(nx,ny,nz),'   EXINCTION'
+           write(31,*)  kexttot(nx,ny,nz)* salbtot(nx,ny,nz),
+     $          '  SCATTERING'
+           write(31,*) salbtot(nx,ny,nz),'   SINGLE SCATTERING ALBEDO'
+           write(31,*) Nlegen-1,'      DEGREE OF LEGENDRE SERIES'
        
-                do jj=1,Nlegen
+           do 1007 jj=1,Nlegen
           
-          legen(jj)=(legencw(jj)*salbcw*kextcw +
-     $   legenrr(jj)*salbrr*kextrr +  legenci(jj)*salbci*kextci +  
-     $    legensn(jj)*salbsn*kextsn + legengr(jj)*salbgr*kextgr) /
-     $      (salbtot(nx,ny,nz)*kexttot(nx,ny,nz)) 
+              legen(jj)=(legencw(jj)*salbcw*kextcw +
+     $          legenrr(jj)*salbrr*kextrr +  legenci(jj)*salbci*kextci +  
+     $          legensn(jj)*salbsn*kextsn + legengr(jj)*salbgr*kextgr) /
+     $             (salbtot(nx,ny,nz)*kexttot(nx,ny,nz)) 
            
         legen2(jj)=(legen2cw(jj)*salbcw*kextcw +
      $   legen2rr(jj)*salbrr*kextrr +    legen2ci(jj)*salbci*kextci +  
@@ -829,35 +830,35 @@ c     $ NLEGENcw,NLEGENci,NLEGENrr,NLEGENsn,NLEGENgr
    
        
           
-           write(21,1005)jj-1,legen(jj),legen2(jj),
-     $ legen3(jj),legen4(jj),legen(jj),legen3(jj)
+          write(31,1005)jj-1,legen(jj),legen2(jj),
+     $         legen3(jj),legen4(jj),legen(jj),legen3(jj)
           g_coeff(nx,ny,nz)=legen(2)/3.0d0
-1005        format(i3,6(1x,f9.7))    
+ 1005     format(i3,6(1x,f9.7))    
 
-         enddo   !end of cycle over Legendre coefficient  
-             close(21) 
-            endif 
+ 1007  enddo                    !end of cycle over Legendre coefficient  
+       close(31) 
+      endif 
             
-          end do  !end of cycle over the vertical layers
+ 1009 end do                    !end of cycle over the vertical layers
          
 C     Preparation of the PROFILE file  (needed by RT3)
 
-          OPEN(21,FILE=file_profile,FORM='FORMATTED',STATUS='unknown')
-          do 577  nz = nlyr,1,-1 ! PSG: N_lay_cut,1,-1 
-             str1=''''
-             offset1=index(FILE_PH(nz),' ') !position of the first blank space
-             tmp_file1=FILE_PH(nz)
-             FILE_PH2(nz)=str1//tmp_file1(1:offset1-1)//str1
-             write(21,1013)  hgt_lev(nx,ny,nz),temp_lev(nx,ny,nz),
-     $            KEXTATMO(nz), FILE_PH2(nz)
-C             write(*,*) nz, hgt_lev(nx,ny,nz),temp_lev(nx,ny,nz), ! PSG: dumn inclusion
+      OPEN(21,FILE=file_profile,FORM='FORMATTED',STATUS='unknown')
+      do 577  nz = nlyr,1,-1    ! PSG: N_lay_cut,1,-1 
+         str1=''''
+         offset1=index(FILE_PH(nz),' ') !position of the first blank space
+         tmp_file1=FILE_PH(nz)
+         FILE_PH2(nz)=str1//tmp_file1(1:offset1-1)//str1
+         write(21,1013)  hgt_lev(nx,ny,nz),temp_lev(nx,ny,nz),
+     $        KEXTATMO(nz), FILE_PH2(nz)
+C     write(*,*) nz, hgt_lev(nx,ny,nz),temp_lev(nx,ny,nz), ! PSG: dumn inclusion
 C     $            KEXTATMO(nz)
- 1013        format(f6.3,1x,f6.2,1x,E9.4,1x,a38)   
- 577      continue              !end of cycle over the vertical layers
-          write(21,1012)  hgt_lev(nx,ny,0),temp_lev(nx,ny,0),
-     $         KEXTATMO(1),''' '''
- 1012     format(f6.3,1x,f6.2,1x,E9.4,1x,a3)  
-          close(21)     
+ 1013    format(f6.3,1x,f6.2,1x,E10.4,1x,a38) ! PSG: E9.4->E10.4
+ 577  continue                  !end of cycle over the vertical layers
+      write(21,1012)  hgt_lev(nx,ny,0),temp_lev(nx,ny,0),
+     $     KEXTATMO(1),''' '''
+ 1012 format(f6.3,1x,f6.2,1x,E9.4,1x,a3)  
+      close(21)     
 
 
 
@@ -901,16 +902,17 @@ c$$$     $ 1x,e9.3,1x,e9.4,1x,f5.1,1x,e9.3)
 C&&&&&&&&   I/O FILE NAMES for the MC&&&&&&&&&&&&&&&&&&
         
         
-         FILEOUT1='../output/TB/RT3TB'//date_str//micro_str//'x'//xstr
-     $        //'y'//ystr//'f'//frq_idx   ! PSG: frq_str
+C         FILEOUT1='../output/TB/RT3TB'//date_str//micro_str//'x'//xstr
+C     $        //'y'//ystr//'f'//frq_idx   ! PSG: added frq_str  (old version)
    
-    
+         FILEOUT1 = trim(NCDFOUT)//'='//date_str//'x'//xstr
+     $        //'y'//ystr//'f'//frq_idx
        
 
       
         OUT_FILE= FILEOUT1
 
-        write(*,*) OUT_FILE
+C        write(*,*) 'output file is: ', OUT_FILE
 
 c$$$       NOUTLEVELS=2  ! PSG: comment out, moved to the begining of code 
 c$$$       OUTLEVELS(1)=1
@@ -943,8 +945,8 @@ C       write(*,*) 'entra a '//FILE_profile//' com outlevels=',OUTLEVELS   ! PSG
 
     
  656   enddo                    ! end over time index
-!$OMP END DO
-!$OMP END PARALLEL      
+C$OMP END DO
+C$OMP END PARALLEL      
  777  enddo                   ! end over frequency index
 
     
