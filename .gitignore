@@ -8,6 +8,9 @@
 # some testing files in source directory
 ./src/garbage
 
+# log files
+*.log
+
 # Prerequisites
 *.d
 

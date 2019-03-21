@@ -266,7 +266,7 @@ C     NetCDF output file definition (creating one Ncdf file per frequency):
         NCDFOUT='../output/TB/RT3TB_'//trim(input_file(j_temp:)) !micro_str//'_'
 
         write(*,*) 'Creating NetCDF '//trim(NCDFOUT)
-           
+        write(*,*) 'ntime=',ntime,'; nlayer=',nlyr,'; nfreq=',n_freq   
         call createncdf(len_trim(NCDFOUT),trim(NCDFOUT),
      $       NUMMU,n_freq,NSTOKES,nlyr,ntime,
      $       ngridx,ngridy,hgt_tmp(1,1,1:nlyr,1),
