@@ -9,12 +9,11 @@ OBJ = $(BASE)/obj
 BIN = $(BASE)/bin
 SRC = $(BASE)/src
 
-#RS_rt3.o rt3.o radtran3.o radutil3.o radscat3.o radintg3.o radmat.o scat_utilities.o dsd_utilities.o Fresnel_surf.o RT_ncdf_IO.o mitt_time.o
-
+#RS_rt3.o rt3.o radtran3.o radutil3.o radscat3.o radintg3.o radmat.o scat_utilities.o dsd_utilities.o Fresnel_surf.o mitt_time.o RT_ncdf_IO.o
 #all: $(OBJ)/*.o 
 #
 
-$(BIN)/RS_RT3_run: $(OBJ)/RS_rt3.o $(OBJ)/rt3.o $(OBJ)/radtran3.o $(OBJ)/radutil3.o $(OBJ)/radscat3.o $(OBJ)/radintg3.o $(OBJ)/radmat.o $(OBJ)/scat_utilities.o $(OBJ)/dsd_utilities.o $(OBJ)/Fresnel_surf.o $(OBJ)/RT_ncdf_IO.o
+$(BIN)/RS_RT3_run: $(OBJ)/RS_rt3.o $(OBJ)/rt3.o $(OBJ)/radtran3.o $(OBJ)/radutil3.o $(OBJ)/radscat3.o $(OBJ)/radintg3.o $(OBJ)/radmat.o $(OBJ)/scat_utilities.o $(OBJ)/dsd_utilities.o $(OBJ)/Fresnel_surf.o $(OBJ)/mitt_time.o $(OBJ)/RT_ncdf_IO.o
 	echo "Subroutines compiled..."
 
 ##	gfortran -fopenmp -o RS_RT3_run RS_rt3.o rt3.o radtran3.o\

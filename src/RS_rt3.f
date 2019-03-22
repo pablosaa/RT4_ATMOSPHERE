@@ -172,7 +172,7 @@ c     The following parameters are set for the TMI sensor
 c    some inputs variable  
        Nstokes=2
 C       N_lay_cut=135  ! PSG: commented, not needed
-       QUAD_TYPE='D'
+       QUAD_TYPE='L' ! PSG: original was 'D'
        GROUND_TYPE='F'  !'L'
        Aziorder=0
        NUMAZIMUTHS=1
@@ -223,7 +223,7 @@ c     WRITE (18,*) nx_in,ny_in,ny_in,ny_fin,tau_min,tau_max
         PHASEFLAG=.true.
 C        LAM=299.7925/freq !mm 
 
-        print*,'NETCDF input files is '//input_file
+        print*,'netCDF input files is '//input_file
 C     !PSG: Calling the NetCDF routine to read data
         call read_wyosonde(len_trim(input_file),input_file,
      $       mxgridx,mxgridy,mxlyr,mxtime,hgt_tmp,press_tmp,temp_tmp,
@@ -231,7 +231,7 @@ C     !PSG: Calling the NetCDF routine to read data
      $       rain_water_tmp,cloud_ice_tmp,snow_tmp,graupel_tmp, qidx,
      $       ngridx,ngridy,deltaxy,nlyr,ntime,lat,lon,
      $       yy,mm,dd,hh,origin_str)
-
+        write(*,*) 'output of reading'
 
         OUTLEVELS(1)=1          ! PSG: moved from befor call RT3 to here
         OUTLEVELS(2)=nlyr+1     ! PSG: N_lay_cut+1
@@ -291,7 +291,7 @@ C     !PSG: Passing temporal variables to old variables (no time)
            call omp_set_num_threads(4)
 C$OMP PARALLEL NUM_THREADS(4)
 C$OMP DO
-        DO 656, timeidx=1,ntime
+        DO 656, timeidx=1,3 !ntime
            write(*,*) 'running on thread: ', OMP_GET_THREAD_NUM(),
      $          OMP_GET_MAX_THREADS()
 

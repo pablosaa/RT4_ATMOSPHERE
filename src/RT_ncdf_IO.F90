@@ -76,17 +76,16 @@ subroutine read_wyosonde(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
 
   ! -----------------------------------------------------------------------------
   ! Open file and read directory
-  print*,'NETCDF input files is', ncflen, ' : ', ncfile
+  print*,'netCDF input files is', ncflen, ' : ', ncfile
   
-  ! '/home/pga082/GFI/data/RASOBS/polargmo/RS_Y2013-2013_M09-09_D01-31_H00-18.nc'
   status = nf90_open(ncfile,NF90_NOWRITE,ncid)
   if(status.ne.0) then
-     print*, 'Cannot open NetCDF-file: '//trim(ncfile)
+     print*, 'Cannot open netCDF-file: '//trim(ncfile)
      stop
   end if
   status = nf90_inquire(ncid,ndims_in,nvars_in,ngatts_in,unlimdimid_in)
   ! Get ID of unlimited dimension
-  
+
   !! print*,ndims_in, nvars_in, ngatts_in, unlimdimid_in
   do i=1,ndims_in
      ! assigning dimension name and length:
@@ -101,7 +100,7 @@ subroutine read_wyosonde(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
      case('time')
         ntime = dim_len(i)
      case default
-        print*, 'NetCDF file dimension '//trim(dim_name(i))//' unknown!'
+        print*, 'netCDF file dimension '//trim(dim_name(i))//' unknown!'
         stop
      end select
   end do
@@ -121,6 +120,7 @@ subroutine read_wyosonde(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
      status = nf90_inquire_variable(ncid, myVarIDs(i), varname, ndims = NN)
      if(status /= nf90_NoErr) print*, 'ERROR: NetCDF variable name cannot be assigned'
      status = nf90_inq_varid(ncid, varname, VarId)
+
      if(status /= nf90_NoErr) print*, 'ERROR: NetCDF variable ID for ',varname,' cannot be retrieved'
      ! Loading the variables from NetCDF
      select case(NN)
@@ -136,55 +136,56 @@ subroutine read_wyosonde(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
         print*,trim(varname),'WARNING: neither 4D nor 3D nor 2D variable!!'
         continue
      end select
+     if(status /= nf90_NoErr) print*, 'error getting variable ', trim(varname)
 
      ! Assigning the data to RT3/4 variable names
      select case(trim(varname))
      case('HGT')
-        hgt_lev(:,:,0,:) = spread(Var2D,dim=3,ncopies=ntime)
+        hgt_lev(:dim_len(1),:dim_len(2),0,:) = spread(Var2D,dim=3,ncopies=ntime)
         ! for 2D variables:
      case('T2')
-        temp_lev(:,:,0,:) = Var3D
+        temp_lev(:dim_len(1),:dim_len(2),0,:) = Var3D
      case('PSFC')
-        press_lev(:,:,0,:) = Var3D
+        press_lev(:dim_len(1),:dim_len(2),0,:) = Var3D
      case('Q2')
-        relhum_lev(:,:,0,:) = Var3D
+        relhum_lev(:dim_len(1),:dim_len(2),0,:) = Var3D
         ! for 3D variables:
      case('PHB')
         hgt_lev = 0
         ! Passing values to RT3 variables:
-        hgt_lev(:,:,1:dim_len(3),:) = Var4D
+        hgt_lev(:dim_len(1),:dim_len(2),1:dim_len(3),:dim_len(4)) = Var4D
      case('P')
         press_lev = 0
         ! Passing values to RT3 variables:
-        press_lev(:,:,1:dim_len(3),:) = Var4D
+        press_lev(:dim_len(1),:dim_len(2),1:dim_len(3),:dim_len(4)) = Var4D
      case('T')
         temp_lev = 0
         ! Passing values to RT3 variables:
-        temp_lev(:,:,1:dim_len(3),:) = Var4D
+        temp_lev(:dim_len(1),:dim_len(2),1:dim_len(3),:dim_len(4)) = Var4D
      case('QVAPOR')
         relhum_lev = 0
         ! Passing values to RT3 variables:
-        relhum_lev(:,:,1:dim_len(3),:) = Var4D
+        relhum_lev(:dim_len(1),:dim_len(2),1:dim_len(3),:dim_len(4)) = Var4D
      case('QCLOUD')
         cloud_water_lev = 0
         ! Passing values to RT3 variables:
-        cloud_water_lev(:,:,1:dim_len(3),:) = Var4D
+        cloud_water_lev(:dim_len(1),:dim_len(2),1:dim_len(3),:dim_len(4)) = Var4D
      case('QRAIN')
         rain_water_lev = 0
         ! Passing values to RT3 variables:
-        rain_water_lev(:,:,1:dim_len(3),:) = Var4D
+        rain_water_lev(:dim_len(1),:dim_len(2),1:dim_len(3),:dim_len(4)) = Var4D
      case('QICE')
         cloud_ice_lev = 0
         ! Passing values to RT3 variables:
-        cloud_ice_lev(:,:,1:dim_len(3),:) = Var4D
+        cloud_ice_lev(:dim_len(1),:dim_len(2),1:dim_len(3),:dim_len(4)) = Var4D
      case('QSNOW')
         snow_lev = 0
         ! Passing values to RT3 variables:
-        snow_lev(:,:,1:dim_len(3),:) = Var4D
+        snow_lev(:dim_len(1),:dim_len(2),1:dim_len(3),:dim_len(4)) = Var4D
      case('QGRAUP')
         graupel_lev = 0
         ! Passing values to RT3 variables:
-        graupel_lev(:,:,1:dim_len(3),:) = Var4D
+        graupel_lev(:dim_len(1),:dim_len(2),1:dim_len(3),:dim_len(4)) = Var4D
      case('QIDX')
         ! Passing values to quality index:
         qidx(:dim_len(1),:dim_len(2),:dim_len(4)) = Var3D
@@ -260,15 +261,31 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,NTIME,XN,YN,&
   integer, dimension(NSTOKES) :: stokes_var
   real(kind=4), dimension(NTIME) :: TIMELINE
 
- 
+  integer :: nelv, NANGLES
+  real(kind=4), dimension(10) :: elevations
+  
+  namelist/mwrobsang/nelv,elevations
+
+  ! reading auxiliary elevations file
+  OPEN(UNIT=100, FILE='mwrobsang',STATUS='old',IOSTAT=status)
+  if(status.eq.0) then
+     READ(UNIT=100,nml=mwrobsang)
+     close(UNIT=100)
+  else
+     print*,'no input file mwrobsang'
+     nelv = 0
+     elevations = 0
+  end if
+  NANGLES = NUMMU + nelv
+  
   status = nf90_create(trim(ncfile),NF90_CLOBBER,ncid)
   if(status /= nf90_NOERR) stop 'Output NetCDF was not possible to create'
   ! Defining dimensions
-  status = nf90_def_dim(ncid, "theta_z", NUMMU, mu_id)
+  status = nf90_def_dim(ncid, "theta_z", NANGLES, mu_id) ! NUMMU
   status = nf90_def_dim(ncid, "freq", NFREQ, freq_id)
   status = nf90_def_dim(ncid, "stokes", NSTOKES, stok_id)
   status = nf90_def_dim(ncid, "layer", NLYR, lyr_id)
-  status = nf90_def_dim(ncid, "time", NTIME, time_id) !NF90_UNLIMITED, time_id)
+  status = nf90_def_dim(ncid, "time", NF90_UNLIMITED, time_id) !NTIME, time_id) !
   status = nf90_def_dim(ncid, "xn", XN , xn_id)
   status = nf90_def_dim(ncid, "yn", YN , yn_id)
 
@@ -323,11 +340,11 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,NTIME,XN,YN,&
   ! Adding Attributes
   status = nf90_put_att(ncid,var_mu_id,"short_name","theta_z")
   status = nf90_put_att(ncid,var_mu_id,"long_name","Zenithal angle")
-  status = nf90_put_att(ncid,var_mu_id,"units","deg")
+  status = nf90_put_att(ncid,var_mu_id,"units","degree")
 
   status = nf90_put_att(ncid,var_stok_id,"short_name","stk")
   status = nf90_put_att(ncid,var_stok_id,"long_name","Stokes_vector")
-  status = nf90_put_att(ncid,var_stok_id,"units","-")
+  status = nf90_put_att(ncid,var_stok_id,"units","1")
 
   status = nf90_put_att(ncid,var_lyr_id,"short_name","layer")
   status = nf90_put_att(ncid,var_lyr_id,"long_name","profile layer height")
@@ -339,8 +356,8 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,NTIME,XN,YN,&
   status = nf90_put_att(ncid,var_freq_id,"units","GHz")
 
   status = nf90_put_att(ncid,var_time_id,"short_name","time")
-  status = nf90_put_att(ncid,var_time_id,"long_name","profile_time")
-  status = nf90_put_att(ncid,var_time_id,"units","days since 1970.1.1 00:00:00")
+  status = nf90_put_att(ncid,var_time_id,"long_name","days since 1970.1.1 00:00:00")
+  status = nf90_put_att(ncid,var_time_id,"units","day")
   status = nf90_put_att(ncid,var_time_id,"_FillValue", -999.9)
 
   status = nf90_put_att(ncid,var_tbup1_id,"short_name","TB_UP_TOA")
@@ -397,82 +414,82 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,NTIME,XN,YN,&
   
   status = nf90_put_att(ncid,var_qv_id,"short_name","qv")
   status = nf90_put_att(ncid,var_qv_id,"long_name","specific humidity")
-  status = nf90_put_att(ncid,var_qv_id,"units","g/m^3")
+  status = nf90_put_att(ncid,var_qv_id,"units","g m-3")
   status = nf90_put_att(ncid,var_qv_id,"_FillValue",-999.9)
 
   status = nf90_put_att(ncid,var_qc_id,"short_name","qc")
   status = nf90_put_att(ncid,var_qc_id,"long_name","cloud water content")
-  status = nf90_put_att(ncid,var_qc_id,"units","g/m^3")
+  status = nf90_put_att(ncid,var_qc_id,"units","g m-3")
   status = nf90_put_att(ncid,var_qc_id,"_FillValue",-999.9)
 
   status = nf90_put_att(ncid,var_qr_id,"short_name","qr")
   status = nf90_put_att(ncid,var_qr_id,"long_name","rain water content")
-  status = nf90_put_att(ncid,var_qr_id,"units","g/m^3")
+  status = nf90_put_att(ncid,var_qr_id,"units","g m-3")
   status = nf90_put_att(ncid,var_qr_id,"_FillValue",-999.9)
   
   status = nf90_put_att(ncid,var_qs_id,"short_name","qs")
   status = nf90_put_att(ncid,var_qs_id,"long_name","snow water content")
-  status = nf90_put_att(ncid,var_qs_id,"units","g/m^3")
+  status = nf90_put_att(ncid,var_qs_id,"units","g m-3")
   status = nf90_put_att(ncid,var_qs_id,"_FillValue",-999.9)
 
   status = nf90_put_att(ncid,var_qg_id,"short_name","qg")
   status = nf90_put_att(ncid,var_qg_id,"long_name","graupel water content")
-  status = nf90_put_att(ncid,var_qg_id,"units","g/m^3")
+  status = nf90_put_att(ncid,var_qg_id,"units","g m-3")
   status = nf90_put_att(ncid,var_qg_id,"_FillValue",-999.9)
 
   status = nf90_put_att(ncid,var_qi_id,"short_name","qi")
   status = nf90_put_att(ncid,var_qi_id,"long_name","ice water content")
-  status = nf90_put_att(ncid,var_qi_id,"units","g/m^3")
+  status = nf90_put_att(ncid,var_qi_id,"units","g m-3")
   status = nf90_put_att(ncid,var_qi_id,"_FillValue",-999.9)
 
   status = nf90_put_att(ncid,var_kexttot_id,"short_name","kext_tot")
   status = nf90_put_att(ncid,var_kexttot_id,"long_name","total extinction coefficient")
-  status = nf90_put_att(ncid,var_kexttot_id,"units","1/km")
+  status = nf90_put_att(ncid,var_kexttot_id,"units","km-1")
   status = nf90_put_att(ncid,var_kexttot_id,"_FillValue",-999.9)
   
   status = nf90_put_att(ncid,var_kextatm_id,"short_name","kext_atm")
   status = nf90_put_att(ncid,var_kextatm_id,"long_name","atmospheric extinction coefficient")
-  status = nf90_put_att(ncid,var_kextatm_id,"units","1/km")
+  status = nf90_put_att(ncid,var_kextatm_id,"units","km-1")
   status = nf90_put_att(ncid,var_kextatm_id,"_FillValue",-999.9)
 
   status = nf90_put_att(ncid,var_kextqc_id,"short_name","kext_cloud")
   status = nf90_put_att(ncid,var_kextqc_id,"long_name","cloud extinction coefficient")
-  status = nf90_put_att(ncid,var_kextqc_id,"units","1/km")
+  status = nf90_put_att(ncid,var_kextqc_id,"units","km-1")
   status = nf90_put_att(ncid,var_kextqc_id,"_FillValue",-999.9)
 
   status = nf90_put_att(ncid,var_kextqr_id,"short_name","kext_rain")
   status = nf90_put_att(ncid,var_kextqr_id,"long_name","rain extinction coefficient")
-  status = nf90_put_att(ncid,var_kextqr_id,"units","1/km")
+  status = nf90_put_att(ncid,var_kextqr_id,"units","km-1")
   status = nf90_put_att(ncid,var_kextqr_id,"_FillValue",-999.9)
   
   status = nf90_put_att(ncid,var_kextqs_id,"short_name","kext_snow")
   status = nf90_put_att(ncid,var_kextqs_id,"long_name","snow extinction coefficient")
-  status = nf90_put_att(ncid,var_kextqs_id,"units","1/km")
+  status = nf90_put_att(ncid,var_kextqs_id,"units","km-1")
   status = nf90_put_att(ncid,var_kextqs_id,"_FillValue",-999.9)
 
   status = nf90_put_att(ncid,var_kextqg_id,"short_name","kext_graupel")
   status = nf90_put_att(ncid,var_kextqg_id,"long_name","graupel extinction coefficient")
-  status = nf90_put_att(ncid,var_kextqg_id,"units","1/km")
+  status = nf90_put_att(ncid,var_kextqg_id,"units","km-1")
   status = nf90_put_att(ncid,var_kextqg_id,"_FillValue",-999.9)
 
   status = nf90_put_att(ncid,var_kextqi_id,"short_name","kext_ice")
   status = nf90_put_att(ncid,var_kextqi_id,"long_name","ice extinction coefficient")
-  status = nf90_put_att(ncid,var_kextqi_id,"units","1/km")
+  status = nf90_put_att(ncid,var_kextqi_id,"units","km-1")
   status = nf90_put_att(ncid,var_kextqi_id,"_FillValue",-999.9)
   
   status = nf90_put_att(ncid,var_salbtot_id,"short_name","alb_tot")
   status = nf90_put_att(ncid,var_salbtot_id,"long_name","total surface albedo")
-  status = nf90_put_att(ncid,var_salbtot_id,"units","-")
+  status = nf90_put_att(ncid,var_salbtot_id,"units","")
   status = nf90_put_att(ncid,var_salbtot_id,"_FillValue",-999.9)
 
   status = nf90_put_att(ncid,var_backsct_id,"short_name","backscatt")
   status = nf90_put_att(ncid,var_backsct_id,"long_name","backscattering coefficient")
-  status = nf90_put_att(ncid,var_backsct_id,"units","1/km")
+  status = nf90_put_att(ncid,var_backsct_id,"units","km-1")
   status = nf90_put_att(ncid,var_backsct_id,"_FillValue",-999.9)
 
   status = nf90_put_att(ncid,var_gcoeff_id,"short_name","g_coeff")
   status = nf90_put_att(ncid,var_gcoeff_id,"long_name","asymetry factor")
-  status = nf90_put_att(ncid,var_gcoeff_id,"units","-")
+  status = nf90_put_att(ncid,var_gcoeff_id,"units","1")
   status = nf90_put_att(ncid,var_gcoeff_id,"_FillValue",-999.9)
 
 
@@ -545,17 +562,35 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   integer, intent(in) :: NUMMU, NOUTLEVELS, NSTOKES, time_len
 
   ! internal variables
+  integer :: i, j, k
   integer :: status, ncid, VarId, idx, idf
   integer :: nDims, unlimdimid, freq_id
   character(len=len(OUT_FILE)+3) :: ncfile
   character(len=40) :: dim_name
   integer :: x_grid, y_grid, i_freq, freq_len, NTIME
   real(kind=8) :: AllFreq(30)
-  real(kind=8), dimension(NUMMU) :: ZENITH_THETA
+  real(kind=8), allocatable, dimension(:) :: ZENITH_THETA  ! (NUMMU)
   real(kind=c_double) :: TIMELINE
   integer(kind=c_int) :: date(6)
   real(kind=8), parameter :: PI = 4.0*atan(1.0)
+  real(kind=8) :: TBx, TB0, TB1, mu0, mu1
   
+  integer :: nelv, NANGLES
+  real(kind=8), dimension(10) :: elevations, coselv
+  
+  namelist/mwrobsang/nelv,elevations
+  
+  ! reading auxiliary elevations file
+  OPEN(UNIT=100, FILE='mwrobsang',STATUS='old',IOSTAT=status)
+  if(status.eq.0) then
+     READ(UNIT=100,nml=mwrobsang)
+     close(UNIT=100)
+  else
+     nelv = 0
+     elevations = 0
+  end if
+  NANGLES = NUMMU + nelv
+
   ! Extracting information from the OUT_FILE character string:
   ! * The OUT_FILE has the form like:
   ! ../output/TB/RT3TB13090112Exp7.6MaxGa0.2Exp4.0MaxGaExp8.0x001y001f27.20
@@ -593,8 +628,6 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   !!!status = nf90_get_var(ncid,unlimdimid,TIMELINE)
   !!!time_len = minloc(TIMELINE,MASK=TIMELINE.LT.0)
 
-  ZENITH_THETA = acos(MU_VALUES(:NUMMU))*180.0/PI
-  
   ! For frequency
   ! * Frequency from OUT_FILE:
   idx = scan(OUT_FILE,'f',back=.true.)+1
@@ -606,7 +639,7 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   status = nf90_get_var(ncid,freq_id,AllFreq(1:freq_len))
   !!! i_freq = minloc(ABS(AllFreq(1:freq_len)-freq),DIM=1)
   if(i_freq.LT.1) stop 'ERROR finding frequency index in STORENCDF'
-  print*, 'Date, UXTIME, time,x-grid,y-grid, freq dim has: ',date, TIMELINE, time_len, x_grid, y_grid, AllFreq(i_freq)
+  print*, 'Date, UXTIME, x-grid, y-grid, freq dim has: ',date, TIMELINE, x_grid, y_grid, AllFreq(i_freq)
   
   ! Writting variables into NetCDF file:
 
@@ -618,13 +651,36 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
 
      ! First entrance to STORENCDF, writting common variables:
      ! writting MU
+     allocate(ZENITH_THETA(NANGLES))
+     ZENITH_THETA = -99.
+     ZENITH_THETA(:NUMMU) = MU_VALUES(:NUMMU)
+     coselv = cos(elevations*PI/180)
+     do k=1,nelv
+        j = minloc(ZENITH_THETA,1,coselv(k)<ZENITH_THETA)
+        if (j.eq.1) j=2;
+        mu0 = ZENITH_THETA(j-1)
+        mu1 = ZENITH_THETA(j)
+        TB0 = OUTVAR(j-1,1,1,1)
+        TB1 = OUTVAR(j,1,1,1)
+        ZENITH_THETA(j+1:) = ZENITH_THETA(j:)
+        ZENITH_THETA(j) = coselv(k)
+        TBx = TB0+(TB1-TB0)*(coselv(k)-mu0)/(mu1-mu0)
+        !call interp_RT3(MU_VALUES(:NUMMU),coselv(k),OUTVAR(:NUMMU,1,1,1),newTB,NUMMU)
+        print*,'TBin=',mu0,'-',TB0,' ; ', mu1,'-',TB1
+        print*,'TBout=',coselv(k),'-',TBx
+     end do
+
+
+     ZENITH_THETA = acos(ZENITH_THETA)*180.0/PI
+     print*, 'el=',elevations
+     print*, 'ze=',ZENITH_THETA
      status = nf90_inq_varid(ncid, "theta_z", VarId)
      if(status /= nf90_NoErr) stop 'cos(MU) ID cannot be assigned!'
-     status = nf90_put_var(ncid,VarId,ZENITH_THETA(:NUMMU))
+     status = nf90_put_var(ncid,VarId,ZENITH_THETA(:NANGLES))
      if(status /= nf90_NoErr) stop 'cos(MU) values cannot be stored!'
-
+     deallocate(ZENITH_THETA)
   end if
-  if(time_len.EQ.NTIME.AND.i_freq.EQ.1) then
+  if(time_len.GT.1.AND.i_freq.EQ.freq_len) then
      ! writting Initial date as global variable:
      status = nf90_redef(ncid)
      status = nf90_put_att(ncid,NF90_GLOBAL,"End_Date", date) !OUT_FILE(19:26))  ! (16:23)
