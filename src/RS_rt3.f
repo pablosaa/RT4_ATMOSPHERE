@@ -172,7 +172,7 @@ c     The following parameters are set for the TMI sensor
 c    some inputs variable  
        Nstokes=2
 C       N_lay_cut=135  ! PSG: commented, not needed
-       QUAD_TYPE='L' ! PSG: original was 'D'
+       QUAD_TYPE='D' ! PSG: original was 'D'
        GROUND_TYPE='F'  !'L'
        Aziorder=0
        NUMAZIMUTHS=1
