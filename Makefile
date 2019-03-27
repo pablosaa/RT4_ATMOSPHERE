@@ -26,13 +26,13 @@ OBJ = $(BASE)/obj
 BIN = $(BASE)/bin
 SRC = $(BASE)/src
 
-$(BIN)/RS_RT3_run: $(OBJ)/*.o
-	$(CF) -std=legacy -fopenmp -o $@ $(OBJ)/RS_rt3.o $(OBJ)/rt3.o $(OBJ)/radtran3.o \
+$(BIN)/RS_RT3_run: $(OBJ)/%.o
+	$(CF) -fbounds-check -std=legacy -fopenmp -o $@ $(OBJ)/RS_rt3.o $(OBJ)/rt3.o $(OBJ)/radtran3.o \
         $(OBJ)/radutil3.o  $(OBJ)/radscat3.o $(OBJ)/radintg3.o $(OBJ)/radmat.o \
 	$(OBJ)/scat_utilities.o $(OBJ)/dsd_utilities.o $(OBJ)/Fresnel_surf.o \
 	$(OBJ)/mitt_time.o $(OBJ)/RT_ncdf_IO.o -I$(INCPATH) -L$(LIBPATH) -lnetcdff
 
-$(OBJ)/*.o: $(SRC)/*.f $(SRC)/*.F90 $(SRC)/*.c 
+$(OBJ)/%.o: $(SRC)/*.f $(SRC)/*.F90 $(SRC)/*.c 
 	+$(MAKE) -C $(SRC)/
 
 	rm -f $(BASE)/output/tmp/*

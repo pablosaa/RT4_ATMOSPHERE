@@ -1,7 +1,7 @@
 CF = gfortran
 CC = gcc
 
-LFLAG = -c -fno-automatic -std=legacy
+LFLAG = -c -fbounds-check -fno-automatic -std=legacy
 OFLAG = -o $@
 
 #BASE = .. #/home/pga082/GFI/scripts/RT3_NCDF

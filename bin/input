@@ -1,5 +1,5 @@
 &inputparam
-	input_file='/home/pga082/GFI/data/RT/RS_Y2019-2019_x001y001_RT.nc',
+	input_file='/home/pablo/GFI/data/RT/RS_Y2019-2019_x001y001_RT.nc',
 	nx_in=1,
 	nx_fin=1,
 	ny_in=1,

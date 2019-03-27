@@ -261,7 +261,7 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,NTIME,XN,YN,&
   integer, dimension(NSTOKES) :: stokes_var
   real(kind=4), dimension(NTIME) :: TIMELINE
   integer :: nelv, NANGLES
-  real(kind=4), dimension(10) :: elevations
+  real(kind=8), dimension(10) :: elevations
   namelist/mwrobsang/nelv,elevations
 
   ! reading auxiliary input file with extra elevation angles
@@ -568,17 +568,17 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   character(len=40) :: dim_name
   integer :: x_grid, y_grid, i_freq, freq_len, NTIME
   real(kind=8) :: AllFreq(30)
-  !real(kind=8), allocatable, dimension(:) :: ZENITH_THETA  ! (NUMMU)
-  !real(kind=8), allocatable, dimension(:,:,:,:) :: TB_THETA
-  real(kind=8), dimension(NUMMU+10) :: ZENITH_THETA  ! (NUMMU)
-  real(kind=8), dimension(NUMMU+10,NSTOKES,2,NOUTLEVELS) :: TB_THETA 
+  !  real(kind=8), allocatable, dimension(:) :: ZENITH_THTA  ! (NUMMU)
+  !  real(kind=8), allocatable, dimension(:,:,:,:) :: TB_THTA
+  real(kind=8), dimension(42) :: ZENITH_THTA  ! (NUMMU)
+  real(kind=8), dimension(42,NSTOKES,2,NOUTLEVELS) :: TB_THTA
   real(kind=c_double) :: TIMELINE
   integer(kind=c_int) :: date(6)
   real(kind=8), parameter :: PI = 4.0*atan(1.0)
 
   real(kind=8) :: TBx, TB0, TB1, mu0, mu1
-  integer :: nelv, NANGLES
-  real(kind=8), dimension(10) :: elevations, coselv
+  integer :: nelv, NANG
+  real(kind=8), dimension(10) :: elevations, elvmu
   
   namelist/mwrobsang/nelv,elevations
   
@@ -647,12 +647,21 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
 
   status = nf90_inq_varid(ncid, "theta_z", VarId)
   if(status /= nf90_NoErr)  stop 'cos(MU) ID cannot be assigned!'
-  status = nf90_inquire_dimension(ncid,Varid,dim_name,NANGLES)
-  !allocate(ZENITH_THETA(NANGLES))
-  !allocate(TB_THETA(NANGLES,NSTOKES,2,NOUTLEVELS))
-  coselv = cos((90-elevations)*PI/180)
-  call interp1_1D(MU_VALUES(:NUMMU),OUTVAR, NUMMU, coselv,nelv,NSTOKES,2,NOUTLEVELS,ZENITH_THETA,TB_THETA)
+  status = nf90_inquire_dimension(ncid,Varid,dim_name,NANG)
 
+  print*,'NANG=',NANG
+  !allocate(ZENITH_THTA(NANG))
+  !allocate(TB_THTA(NANG,NSTOKES,2,NOUTLEVELS))
+  print*,shape(ZENITH_THTA)
+  print*, shape(TB_THTA)
+  ! converting input MWR elevation angles into zenith angles cos(mu)
+  elvmu = cos((90.0-elevations)*PI/180.)
+
+  ! calling interpolation:
+!!$  if(nelv.GT.0) then
+  call interp1_1D(MU_VALUES, OUTVAR, NUMMU, elvmu, nelv,&
+       & ZENITH_THTA, NANG, TB_THTA, NSTOKES,2,NOUTLEVELS)
+!!$  end if
   if(time_len.EQ.1.AND.i_freq.EQ.1) then
      ! writting Initial date as global variable:
      status = nf90_redef(ncid)
@@ -662,10 +671,8 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
      ! First entrance to STORENCDF, writting common variables:
      ! writting MU
      !status = nf90_get_att(ncid,VarId,"N_obs_angles",nelv)
-     !ZENITH_THETA = -99.
-     !ZENITH_THETA(:NUMMU) = MU_VALUES(:NUMMU)
-     
-     do k=1,nelv
+          
+     !do k=1,nelv
      !   j = minloc(ZENITH_THETA,1,coselv(k)<ZENITH_THETA)
      !   if (j.eq.1) j=2;
      !   mu0 = ZENITH_THETA(j-1)
@@ -678,16 +685,17 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
         !call interp_RT3(MU_VALUES(:NUMMU),coselv(k),OUTVAR(:NUMMU,1,1,1),newTB,NUMMU)
         !print*, 'mu0 =', acos(coselv)*180/PI
         !print*, 'MU  =', acos(MU_VALUES(:NUMMU))*180/PI
-        print*,'TBin=' , OUTVAR(:10,1,1,1)
-        print*,'zenit=', acos(ZENITH_THETA(:10))*180/PI
-        print*,'TBout=', TB_THETA(:10,1,1,1)
-     end do
+        !print*,'TBin=' , OUTVAR(:10,1,1,1)
+        !print*,'zenit=', acos(ZENITH_THTA(:10))*180/PI
+        !print*,'TBout=', TB_THTA(:10,1,1,1)
+     !end do
 
-
-     ZENITH_THETA = acos(ZENITH_THETA)*180.0/PI
+     ! converting cos(mu) to zenithal angle:
+     !ZENITH_THTA = MU_VALUES
+     ZENITH_THTA = acos(ZENITH_THTA)*180.0/PI
      
      status = nf90_inq_varid(ncid, "theta_z", VarId)
-     status = nf90_put_var(ncid,VarId,ZENITH_THETA(:NANGLES))
+     status = nf90_put_var(ncid,VarId,ZENITH_THTA)
      if(status /= nf90_NoErr) stop 'cos(MU) values cannot be stored!'
   end if
   
@@ -708,12 +716,11 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   status = nf90_put_var(ncid,VarId,TIMELINE,start=(/time_len/))  ! date(3)
   if(status /= nf90_NoErr) stop 'Time values cannot be stored!'
 
-  print*, 'before TB copy'
-  
+  !TB_THTA=OUTVAR
   ! writting TOA TB_UPwelling ( OUTVAR has the dimension of [mu,stokes,Xwelling,level]) 
   status = nf90_inq_varid(ncid, "TB_UP_TOA", VarId)
   if(status /= nf90_NoErr) stop 'TB_UP TOA cannot be assigned!' ! OUTVAR(:,:,1,1)
-  status = nf90_put_var(ncid,VarId,TB_THETA(:,:,1,1),start=(/1,i_freq,1,x_grid,y_grid,time_len/),count=(/NANGLES,1,2,1,1,1/))
+  status = nf90_put_var(ncid,VarId,TB_THTA(:,:,1,1),start=(/1,i_freq,1,x_grid,y_grid,time_len/),count=(/NANG,1,2,1,1,1/))
   !status = nf90_put_var(ncid,VarId,OUTVAR(:,:,1,:),start=(/1,1,1,x_grid,y_grid,time_len/),count=(/NUMMU,2,NOUTLEVELS,1,1,1/))
   if(status /= nf90_NoErr) stop 'TB_UP TOA values cannot be stored!'
   print*, 'TB copy 1'
@@ -722,14 +729,14 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   status = nf90_inq_varid(ncid, "TB_DN_TOA", VarId)
   if(status /= nf90_NoErr) stop 'TB_DN TOA cannot be assigned!' ! OUTVAR(:,:,2,1)
   !status = nf90_put_var(ncid,VarId,OUTVAR(:,:,2,:),start=(/1,1,1,time_len/),count=(/NUMMU,2,NOUTLEVELS,1/))
-  status = nf90_put_var(ncid,VarId,TB_THETA(:,:,2,1),start=(/1,i_freq,1,x_grid,y_grid,time_len/),count=(/NANGLES,1,2,1,1,1/))
+  status = nf90_put_var(ncid,VarId,TB_THTA(:,:,2,1),start=(/1,i_freq,1,x_grid,y_grid,time_len/),count=(/NANG,1,2,1,1,1/))
   if(status /= nf90_NoErr) stop 'TB_DN TOA values cannot be stored!'
   print*, 'TB copy 2'
   
   ! writting GROUND TB_UPwelling ( OUTVAR has the dimension of [mu,stokes,Xwelling,level]) 
   status = nf90_inq_varid(ncid, "TB_UP_GRD", VarId)
   if(status /= nf90_NoErr) stop 'TB_UP GRD cannot be assigned!'
-  status = nf90_put_var(ncid,VarId,TB_THETA(:,:,1,2),start=(/1,i_freq,1,x_grid,y_grid,time_len/),count=(/NANGLES,1,2,1,1,1/))
+  status = nf90_put_var(ncid,VarId,TB_THTA(:,:,1,2),start=(/1,i_freq,1,x_grid,y_grid,time_len/),count=(/NANG,1,2,1,1,1/))
   !status = nf90_put_var(ncid,VarId,OUTVAR(:,:,1,:),start=(/1,1,1,x_grid,y_grid,time_len/),count=(/NUMMU,2,NOUTLEVELS,1,1,1/))
   if(status /= nf90_NoErr) stop 'TB_UP GRD values cannot be stored!'
   print*, 'TB copy 3'
@@ -738,7 +745,7 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   status = nf90_inq_varid(ncid, "TB_DN_GRD", VarId)
   if(status /= nf90_NoErr) stop 'TB_DN GRD cannot be assigned!'
   !status = nf90_put_var(ncid,VarId,OUTVAR(:,:,2,:),start=(/1,1,1,time_len/),count=(/NUMMU,2,NOUTLEVELS,1/))
-  status = nf90_put_var(ncid,VarId,TB_THETA(:,:,2,2),start=(/1,i_freq,1,x_grid,y_grid,time_len/),count=(/NANGLES,1,2,1,1,1/))
+  status = nf90_put_var(ncid,VarId,TB_THTA(:,:,2,2),start=(/1,i_freq,1,x_grid,y_grid,time_len/),count=(/NANG,1,2,1,1,1/))
   if(status /= nf90_NoErr) stop 'TB_DN GRD values cannot be stored!'
   print*, 'TB copy 4'
     
@@ -753,10 +760,12 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   if (status /= NF90_NOERR) stop 'Closing NetCDF was not possible!'
 
   print*, 'before deallocation', time_len
-  !if(allocated(TB_THETA)) deallocate(TB_THETA)
-  print*, 'between deallocation'
-  !if(allocated(ZENITH_THETA)) deallocate(ZENITH_THETA)
-  print*, 'after deallocation'
+  !if(allocated(ZENITH_THTA)) 
+!!$  deallocate(ZENITH_THTA)
+!!$  print*, 'between deallocation'
+!!$  !if(allocated(TB_THTA)) 
+!!$  deallocate(TB_THTA)
+!!$  print*, 'after deallocation'
 
   return
   
@@ -894,40 +903,62 @@ end subroutine MP_storencdf
 ! -------------------------------------------------------------------------------------
 ! Subroutine to interpolate extra observations angles
 !
-subroutine interp1_1D(Xin, Yin, Nin, X0, N0, Nstk, Nflx, Nlev, Xout, Yout)
+subroutine interp1_1D(Xin, Yin, Nin, X0, N0, Xout, Nout, Yout, Nstk, Nflx, Nlev)
+  
+  ! Interpolated abssice values must increase monotonically, 
+  ! the ordenate values can be decreasing or increasing
+
   implicit none
-  integer, intent(in) :: Nin, N0, Nstk, Nflx, Nlev
+  integer, intent(in) :: Nin, N0, Nstk, Nflx, Nlev, Nout
   real(kind=8), intent(in) :: Xin(Nin), X0(N0), Yin(Nin,Nstk,Nflx,Nlev)
-  real(kind=8), intent(inout):: Xout(Nin+N0), Yout(Nin+N0,Nstk,Nflx,Nlev)
-  !  integer, intent(inout) :: Nout
-  integer :: h, idx, i_0
+  real(kind=8), intent(out):: Xout(Nout)
+  real(kind=8), intent(out):: Yout(Nout,Nstk,Nflx,Nlev)
+  integer :: h, idx, idn
   real(kind=8) :: a, b, Fa(Nstk, Nflx, Nlev), Fb(Nstk, Nflx, Nlev), F0(Nstk, Nflx, Nlev)
-  real(kind=8) :: eps = 1.0E-3
+  real(kind=8) :: eps = 1.0E-4
   
   ! union of Xin and X0 sets
-  Xout = -99.0
-  Xout(1:Nin) = Xin
-  Yout = -99.0
+  Yout = -69.8
   Yout(1:Nin,:,:,:) = Yin
-  do h = 1, N0
-     idx = minloc(Xout,DIM=1,MASK=X0(h)<Xout)
-     i_0 = idx
-     if(idx.EQ.1) idx = 2
-     if(idx.EQ.0) idx = maxloc(Xout,DIM=1)
-     a = Xout(idx-1)
-     b = Xout(idx)
-     Fa = Yin(idx-1,:,:,:)
-     Fb = Yin(idx,:,:,:)
-
-     if(abs(a-b).LT.eps) F0 = Fa
-     if(a.NE.b) F0 = Fa + (X0(h)-a)*(Fb-Fa)/(b-a)
-
-     Xout(i_0+1:) = Xout(i_0:)
-     Xout(i_0) = X0(h)
-
-     Yout(i_0+1:, :, :, :) = Yout(i_0:,:,:,:)
-     Yout(i_0, :, :, :)   = F0
-  end do
   
+  Xout = -69.0
+  Xout(1:Nin) = Xin
+  do h = 1, N0
+     if(X0(h).GT.maxval(Xout)) then
+        idx = maxloc(Xout,1)+1
+        a = Xout(idx-2)
+        b = Xout(idx-1)
+        Fa = Yout(idx-2,:,:,:)
+        Fb = Yout(idx-1,:,:,:)
+     else if(X0(h).LT.minval(Xout)) then
+        idx = 1
+        a = Xout(idx)
+        b = Xout(idx+1)
+        Fa = Yout(idx,:,:,:)
+        Fb = Yout(idx+1,:,:,:)
+     else
+        idx = minloc(Xout,DIM=1,MASK=X0(h)<Xout)
+        a = Xout(idx-1)
+        b = Xout(idx)
+        Fa = Yout(idx-1,:,:,:)
+        Fb = Yout(idx,:,:,:)
+     end if
+     
+     if(abs(X0(h)-b).LT.eps) then
+        F0 = Fb
+     else if(abs(X0(h)-a).LT.eps) then
+        F0 = Fa
+     else
+        F0 = Fa + (X0(h)-a)*(Fb-Fa)/(b-a)
+     end if
+     idn = Nin+h-1
+     Xout(idx+1:idn+1) = Xout(idx:idn)
+     Xout(idx) = X0(h)
+
+     Yout(idx+1:idn+1, :, :, :) = Yout(idx:idn,:,:,:)
+     Yout(idx, :, :, :)   = F0
+     
+  end do
+
 end subroutine interp1_1D
 
