@@ -268,7 +268,7 @@ C     NetCDF output file definition (creating one Ncdf file per frequency):
         write(*,*) 'Creating NetCDF '//trim(NCDFOUT)
         write(*,*) 'ntime=',ntime,'; nlayer=',nlyr,'; nfreq=',n_freq   
         call createncdf(len_trim(NCDFOUT),trim(NCDFOUT),
-     $       NUMMU,n_freq,NSTOKES,nlyr,ntime,
+     $       NUMMU,n_freq,NSTOKES,nlyr,
      $       ngridx,ngridy,hgt_tmp(1,1,1:nlyr,1),
      $       FREQ(1:n_freq),input_file,micro_str,
      $       real(hgt_tmp(:ngridx,:ngridy,0,1),4),
@@ -291,7 +291,7 @@ C     !PSG: Passing temporal variables to old variables (no time)
            call omp_set_num_threads(4)
 C$OMP PARALLEL NUM_THREADS(4)
 C$OMP DO
-        DO 656, timeidx=1,3 !ntime
+        DO 656, timeidx=1,ntime
            write(*,*) 'running on thread: ', OMP_GET_THREAD_NUM(),
      $          OMP_GET_MAX_THREADS()
 

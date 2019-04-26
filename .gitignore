@@ -17,7 +17,7 @@ output/TB/*
 # Compiled Object files
 *.slo
 *.lo
-*.o
+obj/*.o
 *.obj
 
 # Precompiled Headers

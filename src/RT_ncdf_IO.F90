@@ -234,7 +234,7 @@ end subroutine read_wyosonde
 ! to their corresponding NetCDF variables.
 !
 ! ----------------------------------------------------------------------------
-subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,NTIME,XN,YN,&
+subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
      &LAYERS,freq_str,input_file,micro_phys,SELV,SLAT,SLON,origin_str)
   use netcdf
   implicit none
@@ -242,7 +242,7 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,NTIME,XN,YN,&
   integer, intent(in) :: ncflen
   character(len=ncflen), intent(in) :: ncfile
   character(len=*) input_file, micro_phys
-  integer, intent(in) :: NUMMU, NFREQ,NSTOKES,NLYR,NTIME, XN, YN
+  integer, intent(in) :: NUMMU, NFREQ,NSTOKES,NLYR, XN, YN
   real(kind=8), intent(in) :: freq_str(NFREQ), LAYERS(NLYR)
   real(kind=4), intent(in) :: SELV(XN,YN), SLAT(XN,YN), SLON(XN,YN)
   character(len=*), intent(in) :: origin_str
@@ -259,7 +259,7 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,NTIME,XN,YN,&
   integer :: var_kextqg_id, var_kextqi_id, var_kextatm_id, var_kexttot_id
   integer :: var_salbtot_id, var_backsct_id, var_gcoeff_id
   integer, dimension(NSTOKES) :: stokes_var
-  real(kind=4), dimension(NTIME) :: TIMELINE
+  !real(kind=4), dimension(NTIME) :: TIMELINE
   integer :: nelv, NANGLES
   real(kind=8), dimension(10) :: elevations
   namelist/mwrobsang/nelv,elevations
@@ -282,7 +282,7 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,NTIME,XN,YN,&
   status = nf90_def_dim(ncid, "freq", NFREQ, freq_id)
   status = nf90_def_dim(ncid, "stokes", NSTOKES, stok_id)
   status = nf90_def_dim(ncid, "layer", NLYR, lyr_id)
-  status = nf90_def_dim(ncid, "time", NF90_UNLIMITED, time_id) !NTIME, time_id) !
+  status = nf90_def_dim(ncid, "time", NF90_UNLIMITED, time_id)
   status = nf90_def_dim(ncid, "xn", XN , xn_id)
   status = nf90_def_dim(ncid, "yn", YN , yn_id)
 
@@ -522,11 +522,11 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,NTIME,XN,YN,&
   
   ! Putting variables independent of time:
   stokes_var = (/(I,I=1,NSTOKES)/)
-  TIMELINE = -999.9
+  !TIMELINE = -999.9
   status = nf90_put_var(ncid, var_lyr_id, LAYERS)
   status = nf90_put_var(ncid, var_freq_id, freq_str)
   status = nf90_put_var(ncid, var_stok_id, stokes_var)
-  status = nf90_put_var(ncid, var_time_id, TIMELINE)
+  !status = nf90_put_var(ncid, var_time_id, TIMELINE)
   status = nf90_put_var(ncid, var_elvid, SELV)
   status = nf90_put_var(ncid, var_latid, SLAT)
   status = nf90_put_var(ncid, var_lonid, SLON)
