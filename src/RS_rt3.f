@@ -38,6 +38,7 @@ C                    **  RADTRAN I/O SPECIFICATIONS  **
       real*8      freq(20),lam,gammln     ! PSG: making FREQ vector for many frequencies
       character*2 year,month,day, hour    ! PSG: including hour
       character*8  date_str, sim_tag      ! PSG: was character*6  date_str, new sim_tag
+      INTEGER AUIOF, BUIO                 ! PSG: open-file units depending on OMP_THREAD
        INTEGER     MAXLEG, NLEGEN, NUMRAD,NLEGENcw,NLEGENci,
      $NLEGENgr,NLEGENsn,NLEGENrr,aziorder, NUMAZIMUTHS,SRC_CODE
       REAL*8        RAD1, RAD2,refre,refim,SP
@@ -289,8 +290,8 @@ c     write(*,29) frq_str
 C     !PSG: Passing temporal variables to old variables (no time)
            i_time = 0
            call omp_set_num_threads(4)
-C$OMP PARALLEL NUM_THREADS(4)
-C$OMP DO
+!$OMP PARALLEL NUM_THREADS(1) PRIVAD(AUIOF,BUIOF)
+!$OMP DO
         DO 656, timeidx=1,ntime
            write(*,*) 'running on thread: ', OMP_GET_THREAD_NUM(),
      $          OMP_GET_MAX_THREADS()
@@ -798,13 +799,14 @@ c     writing no file
 
 c     write(18,*)'apri file',Nlegen,NLEGENhl,
 c     $ NLEGENcw,NLEGENci,NLEGENrr,NLEGENsn,NLEGENgr
-           OPEN(unit=31,file =file_PH(nz), STATUS = 'unknown',
-     $          form='FORMATTED')
-           write(31,*) kexttot(nx,ny,nz),'   EXINCTION'
-           write(31,*)  kexttot(nx,ny,nz)* salbtot(nx,ny,nz),
+           BUIO = 31 + OMP_GET_THREAD_NUM() ! PSG: included for OpenMP
+           OPEN(unit=BUIO,file =file_PH(nz), STATUS = 'unknown',
+     $          form='FORMATTED') ! PSG: 31 -> BUIO and here on til close(BUIO)
+           write(BUIO,*) kexttot(nx,ny,nz),'   EXINCTION'
+           write(BUIO,*)  kexttot(nx,ny,nz)* salbtot(nx,ny,nz),
      $          '  SCATTERING'
-           write(31,*) salbtot(nx,ny,nz),'   SINGLE SCATTERING ALBEDO'
-           write(31,*) Nlegen-1,'      DEGREE OF LEGENDRE SERIES'
+           write(BUIO,*) salbtot(nx,ny,nz),'   SINGLE SCATTERING ALBEDO'
+           write(BUIO,*) Nlegen-1,'      DEGREE OF LEGENDRE SERIES'
        
            do 1007 jj=1,Nlegen
           
@@ -830,35 +832,35 @@ c     $ NLEGENcw,NLEGENci,NLEGENrr,NLEGENsn,NLEGENgr
    
        
           
-          write(31,1005)jj-1,legen(jj),legen2(jj),
+          write(BUIO,1005)jj-1,legen(jj),legen2(jj),
      $         legen3(jj),legen4(jj),legen(jj),legen3(jj)
-          g_coeff(nx,ny,nz)=legen(2)/3.0d0
+          g_coeff(nx,ny,nz)=legen(2)/3.0d0    ! PSG: 31 -> BUIO 
  1005     format(i3,6(1x,f9.7))    
 
  1007  enddo                    !end of cycle over Legendre coefficient  
-       close(31) 
+       close(BUIO)    ! PSG: 31 -> BUIO 
       endif 
             
  1009 end do                    !end of cycle over the vertical layers
          
 C     Preparation of the PROFILE file  (needed by RT3)
-
-      OPEN(21,FILE=file_profile,FORM='FORMATTED',STATUS='unknown')
+      AUIOF = 21 + OMP_GET_THREAD_NUM()        ! PSG: include Thread-dependent file unit
+      OPEN(AUIOF,FILE=file_profile,FORM='FORMATTED',STATUS='unknown')   ! PSG: 21 -> AUIOF
       do 577  nz = nlyr,1,-1    ! PSG: N_lay_cut,1,-1 
          str1=''''
          offset1=index(FILE_PH(nz),' ') !position of the first blank space
          tmp_file1=FILE_PH(nz)
          FILE_PH2(nz)=str1//tmp_file1(1:offset1-1)//str1
-         write(21,1013)  hgt_lev(nx,ny,nz),temp_lev(nx,ny,nz),
-     $        KEXTATMO(nz), FILE_PH2(nz)
+         write(AUIOF,1013)  hgt_lev(nx,ny,nz),temp_lev(nx,ny,nz),
+     $        KEXTATMO(nz), FILE_PH2(nz)   ! PSG: 21 -> AUIOF
 C     write(*,*) nz, hgt_lev(nx,ny,nz),temp_lev(nx,ny,nz), ! PSG: dumn inclusion
 C     $            KEXTATMO(nz)
  1013    format(f6.3,1x,f6.2,1x,E10.4,1x,a38) ! PSG: E9.4->E10.4
  577  continue                  !end of cycle over the vertical layers
-      write(21,1012)  hgt_lev(nx,ny,0),temp_lev(nx,ny,0),
-     $     KEXTATMO(1),''' '''
+      write(AUIOF,1012)  hgt_lev(nx,ny,0),temp_lev(nx,ny,0),
+     $     KEXTATMO(1),''' '''   ! PSG: 21 -> AUIOF
  1012 format(f6.3,1x,f6.2,1x,E9.4,1x,a3)  
-      close(21)     
+      close(AUIOF)        ! PSG: 21 -> AUIOF
 
 
 
@@ -945,8 +947,8 @@ C       write(*,*) 'entra a '//FILE_profile//' com outlevels=',OUTLEVELS   ! PSG
 
     
  656   enddo                    ! end over time index
-C$OMP END DO
-C$OMP END PARALLEL      
+!$OMP END DO
+!$OMP END PARALLEL      
  777  enddo                   ! end over frequency index
 
     

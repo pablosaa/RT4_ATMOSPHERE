@@ -1,5 +1,5 @@
 # Fortran compiler:
-CF = gfortran
+CF = /usr/bin/gfortran
 
 # Getting server name:
 HOST = $(shell hostname)

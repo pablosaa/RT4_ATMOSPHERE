@@ -1,5 +1,5 @@
 &inputparam
-	input_file='/Data/gfi/scratch/pga082/data/RTin/WyoRS_Y2011-2018_x001y001STfino1.nc',
+	input_file='/Data/gfi/scratch/pga082/data/RTin/WyoRS_Y2014-2018_x001y001ST_01COTUR.nc',
 	nx_in=1,
 	nx_fin=1,
 	ny_in=1,
