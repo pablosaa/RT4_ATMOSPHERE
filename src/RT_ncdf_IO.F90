@@ -21,9 +21,9 @@
 ! calculation of Brightness Temperature Fields.
 ! -------------------------------------------------------------------------------------
 subroutine read_wyosonde(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
-     &press_lev,temp_lev,relhum_lev,cloud_water_lev,&
-     &rain_water_lev,cloud_ice_lev,snow_lev,graupel_lev, qidx,&
-     &ngridx,ngridy,del_xy,nlyr,ntime,lat,lon,year,month,day,hour,&
+     &press_lev,temp_lev,relhum_lev,mixr_lev, cloud_water_lev,&
+     &rain_water_lev,cloud_ice_lev,snow_lev,graupel_lev, winddir_lev, windvel_lev,&
+     &qidx, ngridx, ngridy, del_xy, nlyr, ntime, lat, lon, year, month, day, hour,&
      &origin_str)
   use netcdf
   implicit none
@@ -35,8 +35,8 @@ subroutine read_wyosonde(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
 
   integer, intent(in) ::   mxgridx, mxgridy, mxlyr, mxtime
   real(kind=8), intent(inout), dimension(mxgridx,mxgridy,0:mxlyr,mxtime) :: hgt_lev,temp_lev,press_lev,relhum_lev
-  real(kind=8), intent(inout), dimension(mxgridx,mxgridy,mxlyr,mxtime) :: cloud_water_lev,rain_water_lev,cloud_ice_lev
-  real(kind=8), intent(inout), dimension(mxgridx,mxgridy,mxlyr,mxtime) :: snow_lev,graupel_lev
+  real(kind=8), intent(inout), dimension(mxgridx,mxgridy,mxlyr,mxtime) :: mixr_lev, cloud_water_lev,rain_water_lev,cloud_ice_lev
+  real(kind=8), intent(inout), dimension(mxgridx,mxgridy,mxlyr,mxtime) :: snow_lev,graupel_lev, winddir_lev, windvel_lev
   integer(kind=4), intent(inout), dimension(mxgridx,mxgridy,mxtime) :: qidx
   integer, intent(out) :: ngridx, ngridy, nlyr, ntime
   real(kind=4), intent(out), dimension(mxgridx, mxgridy) :: lat, lon
@@ -162,10 +162,14 @@ subroutine read_wyosonde(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
         temp_lev = 0
         ! Passing values to RT3 variables:
         temp_lev(:dim_len(1),:dim_len(2),1:dim_len(3),:dim_len(4)) = Var4D
-     case('QVAPOR')
+     case('RH')
         relhum_lev = 0
         ! Passing values to RT3 variables:
         relhum_lev(:dim_len(1),:dim_len(2),1:dim_len(3),:dim_len(4)) = Var4D
+     case('QVAPOR')
+        mixr_lev = 0
+        ! Passing values to RT3 variables:
+        mixr_lev(:dim_len(1),:dim_len(2),1:dim_len(3),:dim_len(4)) = Var4D
      case('QCLOUD')
         cloud_water_lev = 0
         ! Passing values to RT3 variables:
@@ -186,6 +190,14 @@ subroutine read_wyosonde(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
         graupel_lev = 0
         ! Passing values to RT3 variables:
         graupel_lev(:dim_len(1),:dim_len(2),1:dim_len(3),:dim_len(4)) = Var4D
+     case('WINDDIR')
+        winddir_lev = 0
+        ! Passing values to RT3 variables:
+        winddir_lev(:dim_len(1),:dim_len(2),1:dim_len(3),:dim_len(4)) = Var4D
+     case('WINDVEL')
+        windvel_lev = 0
+        ! Passing values to RT3 variables:
+        windvel_lev(:dim_len(1),:dim_len(2),1:dim_len(3),:dim_len(4)) = Var4D
      case('QIDX')
         ! Passing values to quality index:
         qidx(:dim_len(1),:dim_len(2),:dim_len(4)) = Var3D
@@ -253,8 +265,8 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
   integer :: var_mu_id, var_stok_id, var_freq_id, var_lyr_id, var_time_id, var_elvid, var_latid, var_lonid
   integer :: var_xid, var_yid, var_tbup1_id, var_tbdn1_id, var_tbup0_id, var_tbdn0_id
   integer :: var_te2_id, var_rh2_id, var_pr2_id
-  integer :: var_te_id, var_pr_id, var_rh_id
-  integer :: var_qv_id, var_qc_id, var_qr_id, var_qs_id, var_qg_id, var_qi_id
+  integer :: var_te_id, var_pr_id, var_rh_id, var_qv_id, var_qc_id
+  integer :: var_qr_id, var_qs_id, var_qg_id, var_qi_id, var_wd_id, var_ws_id
   integer :: var_kextqc_id, var_kextqr_id, var_kextqs_id
   integer :: var_kextqg_id, var_kextqi_id, var_kextatm_id, var_kexttot_id
   integer :: var_salbtot_id, var_backsct_id, var_gcoeff_id
@@ -314,6 +326,8 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
   status = nf90_def_var(ncid, "qs", NF90_REAL4, (/xn_id, yn_id, lyr_id, time_id/), var_qs_id)
   status = nf90_def_var(ncid, "qg", NF90_REAL4, (/xn_id, yn_id, lyr_id, time_id/), var_qg_id)
   status = nf90_def_var(ncid, "qi", NF90_REAL4, (/xn_id, yn_id, lyr_id, time_id/), var_qi_id)
+  status = nf90_def_var(ncid, "wd", NF90_REAL4, (/xn_id, yn_id, lyr_id, time_id/), var_wd_id)
+  status = nf90_def_var(ncid, "ws", NF90_REAL4, (/xn_id, yn_id, lyr_id, time_id/), var_ws_id)
   ! Definition of Micro-physics frequency dependent variables (Profiles)
   status = nf90_def_var(ncid, "kext_tot", NF90_REAL4, (/xn_id, yn_id, lyr_id, freq_id, time_id/), var_kexttot_id)
   status = nf90_def_var(ncid, "kext_atm", NF90_REAL4, (/xn_id, yn_id, lyr_id, freq_id, time_id/), var_kextatm_id)
@@ -441,6 +455,17 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
   status = nf90_put_att(ncid,var_qi_id,"long_name","ice water content")
   status = nf90_put_att(ncid,var_qi_id,"units","g m-3")
   status = nf90_put_att(ncid,var_qi_id,"_FillValue",-999.9)
+
+  status = nf90_put_att(ncid,var_wd_id,"short_name","wd")
+  status = nf90_put_att(ncid,var_wd_id,"long_name","wind direction")
+  status = nf90_put_att(ncid,var_wd_id,"units","deg")
+  status = nf90_put_att(ncid,var_wd_id,"_FillValue",-999.9)
+
+  status = nf90_put_att(ncid,var_ws_id,"short_name","ws")
+  status = nf90_put_att(ncid,var_ws_id,"long_name","wind speed")
+  status = nf90_put_att(ncid,var_ws_id,"units","knot")
+  status = nf90_put_att(ncid,var_ws_id,"_FillValue",-999.9)
+
 
   status = nf90_put_att(ncid,var_kexttot_id,"short_name","kext_tot")
   status = nf90_put_att(ncid,var_kexttot_id,"long_name","total extinction coefficient")
@@ -738,7 +763,7 @@ end subroutine storencdf
 !
 ! ----------------------------------------------------------------------------
 subroutine MP_storencdf(OUT_FILE,time_len,i_freq,y_grid,x_grid,NLYR,LAYERS,TEMP,PRESS,RH,QV,QC,&
-     &KEXTQC,KEXTATM,KEXTTOT,ALBEDO,BACKSCATT,GCOEFF)
+     &WD, WS, KEXTQC, KEXTATM, KEXTTOT, ALBEDO, BACKSCATT, GCOEFF)
   use netcdf
 
   implicit none
@@ -746,7 +771,7 @@ subroutine MP_storencdf(OUT_FILE,time_len,i_freq,y_grid,x_grid,NLYR,LAYERS,TEMP,
   character(len=*), intent(in) :: OUT_FILE
   integer, intent(in) :: time_len, i_freq, y_grid, x_grid, NLYR
   real(kind=8), intent(in) :: TEMP(0:NLYR), PRESS(0:NLYR), RH(0:NLYR)  ! 0: because surface values
-  real(kind=8), intent(in) :: LAYERS(NLYR), QV(NLYR),QC(NLYR)
+  real(kind=8), intent(in) :: LAYERS(NLYR), QV(NLYR), QC(NLYR), WD(NLYR), WS(NLYR)
   real(kind=8), intent(in) :: KEXTTOT(NLYR), KEXTATM(NLYR), KEXTQC(NLYR)
   real(kind=8), intent(in) :: ALBEDO(NLYR), BACKSCATT(NLYR), GCOEFF(NLYR)
 
@@ -818,6 +843,18 @@ subroutine MP_storencdf(OUT_FILE,time_len,i_freq,y_grid,x_grid,NLYR,LAYERS,TEMP,
   if(status /= nf90_NoErr) stop 'QC variable ID cannot be read!'
   status = nf90_put_var(ncid, VarId, QC, start=(/1,1,1,time_len/),count=(/1,1,NLYR,1/))
   if(status /= nf90_NoErr) stop 'QC cannot be written!'
+  ! Writting the Wind Direction variable
+  status = nf90_inq_varid(ncid, "wd", VarId)
+  if(status /= nf90_NoErr) stop 'WD variable ID cannot be read!'
+  status = nf90_put_var(ncid, VarId, WD, start=(/1,1,1,time_len/),count=(/1,1,NLYR,1/))
+  if(status /= nf90_NoErr) stop 'WD cannot be written!'
+  ! Writting the Wind Speed variable
+  status = nf90_inq_varid(ncid, "ws", VarId)
+  if(status /= nf90_NoErr) stop 'WS variable ID cannot be read!'
+  status = nf90_put_var(ncid, VarId, WS, start=(/1,1,1,time_len/),count=(/1,1,NLYR,1/))
+  if(status /= nf90_NoErr) stop 'WS cannot be written!'
+
+  ! ---------------------------------------
   ! Writting the ATMOSPHERIC Extintion coeff
   status = nf90_inq_varid(ncid, "kext_atm", VarId)
   if(status /= nf90_NoErr) stop 'KEXT_ATMOS variable ID cannot be read!'

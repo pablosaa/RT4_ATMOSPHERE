@@ -143,12 +143,15 @@ C     !PSG: Following temporal varaibles is to include NetCDF time depending
        real*8 hgt_tmp(mxgridx,mxgridy,0:mxlyr,mxtime)
        real*8 press_tmp(mxgridx,mxgridy,0:mxlyr,mxtime)
        real*8 temp_tmp(mxgridx,mxgridy,0:mxlyr,mxtime)
-       real*8 relhum_tmp(mxgridx,mxgridy,0:mxlyr,mxtime)  
+       real*8 relhum_tmp(mxgridx,mxgridy,0:mxlyr,mxtime)
+       real*8 mixr_tmp(mxgridx,mxgridy,0:mxlyr,mxtime)
        real*8 cloud_water_tmp(mxgridx,mxgridy,mxlyr,mxtime)
        real*8 rain_water_tmp(mxgridx,mxgridy,mxlyr,mxtime)
        real*8 cloud_ice_tmp(mxgridx,mxgridy,mxlyr,mxtime)
        real*8 snow_tmp(mxgridx,mxgridy,mxlyr,mxtime)
        real*8 graupel_tmp(mxgridx,mxgridy,mxlyr,mxtime)
+       real*8 winddir_tmp(mxgridx,mxgridy,mxlyr,mxtime)
+       real*8 windvel_tmp(mxgridx,mxgridy,mxlyr,mxtime)
        integer*4 qidx(mxgridx,mxgridy,mxtime)
        real*4 yy(mxgridx,mxgridy,mxtime), mm(mxgridx,mxgridy,mxtime)
        real*4 dd(mxgridx,mxgridy,mxtime), hh(mxgridx,mxgridy,mxtime)
@@ -228,10 +231,11 @@ C        LAM=299.7925/freq !mm
 C     !PSG: Calling the NetCDF routine to read data
         call read_wyosonde(len_trim(input_file),input_file,
      $       mxgridx,mxgridy,mxlyr,mxtime,hgt_tmp,press_tmp,temp_tmp,
-     $       relhum_tmp,cloud_water_tmp,
-     $       rain_water_tmp,cloud_ice_tmp,snow_tmp,graupel_tmp, qidx,
-     $       ngridx,ngridy,deltaxy,nlyr,ntime,lat,lon,
-     $       yy,mm,dd,hh,origin_str)
+     $       relhum_tmp,mixr_tmp,cloud_water_tmp,
+     $       rain_water_tmp, cloud_ice_tmp, snow_tmp, graupel_tmp,
+     $       winddir_tmp, windvel_tmp, qidx,
+     $       ngridx, ngridy, deltaxy, nlyr, ntime, lat, lon,
+     $       yy, mm, dd, hh, origin_str)
         write(*,*) 'output of reading'
 
         OUTLEVELS(1)=1          ! PSG: moved from befor call RT3 to here
@@ -292,7 +296,7 @@ C     !PSG: Passing temporal variables to old variables (no time)
            call omp_set_num_threads(4)
 !$OMP PARALLEL NUM_THREADS(1) PRIVAD(AUIOF,BUIOF)
 !$OMP DO
-        DO 656, timeidx=1,ntime
+        DO 656, timeidx = 1, ntime
            write(*,*) 'running on thread: ', OMP_GET_THREAD_NUM(),
      $          OMP_GET_MAX_THREADS()
 
@@ -935,9 +939,11 @@ C       write(*,*) 'entra a '//FILE_profile//' com outlevels=',OUTLEVELS   ! PSG
      $      NLYR,hgt_lev(nx,ny,0:NLYR),
      $      temp_lev(nx,ny,0:NLYR), press_lev(nx,ny,0:NLYR),
      $      relhum_lev(nx,ny,1:NLYR), rho_vap(nx,ny,:),
-     $      cloud_water(nx,ny,:), kextcloud(nx,ny,:),
-     $      KEXTATMO,kexttot(nx,ny,:),salbtot(nx,ny,:),
-     $      back(nx,ny,:),g_coeff(nx,ny,:))
+     $      cloud_water(nx,ny,:),
+     $      winddir_tmp(nx,ny,:NLYR,timeidx),
+     $      windvel_tmp(nx,ny,:NLYR,timeidx),
+     $      kextcloud(nx,ny,:), KEXTATMO,kexttot(nx,ny,:),
+     $      salbtot(nx,ny,:), back(nx,ny,:), g_coeff(nx,ny,:))
 
             close(28)
 
