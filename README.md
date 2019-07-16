@@ -51,13 +51,15 @@ This repository is distributed as follows:
 
 8 directories where ``./bin`` contains the binary executables and input parameter file, ``./src`` has all the source codes, ``./obj`` host the object files from the source codes, ``./output/TB`` is where netCDF output files with the simulations is stored, ``./output/tmp`` is a temporal folder to host auxiliary files during running time, and ``./input_exemplar`` can contain examples of input parameter file with different set of configurations. 
 
+# Data structure
+## Dimensions
+The database stored in a netCDF file has the following dimensions: time, theta_z, stokes, level, x_grid, y_grid
+
+``theta_z`` is the zenithal angle with 0 deg for Zenith and 180 deg for Nadir. The brightess temperatures angular dimension corresponds to the ``theta_z`` values for the downwelling radiation (_DN_) and ``180 - theta_z`` values for the upwelling radiation (_UP_).
+
 ---
-For more info contact:
+For more info contact: pablo.saa@uib.no<br>
 
-Pablo Saavedra G. (pablo.saa@uib.no)
-
-Geophysical Institute, University of Bergen.
-
-(c) 2018 Pablo Saavedra G.
-
-See LICENSE.TXT
+(c) 2018, Pablo Saavedra Garfias<br>
+Geophysical Institute,<br> University of Bergen,<br> Norway.<br>
+See LICENSE
