@@ -50,7 +50,7 @@ subroutine read_wyosonde(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
   integer :: VarId
   character(len=10) :: dim_name(4)
   character(len=10) :: varname
-  integer :: i, NN, dim_len(4)
+  integer :: i, K, NN, dim_len(4)
   integer, allocatable, dimension(:) :: myVarIDs
   real, allocatable, dimension(:,:,:,:) :: Var4D
   real, allocatable, dimension(:,:,:) :: Var3D
@@ -112,16 +112,20 @@ subroutine read_wyosonde(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
   allocate(Var3D(dim_len(1),dim_len(2),dim_len(4)))
   allocate(Var2D(dim_len(1),dim_len(2)))
   allocate(Var1D(dim_len(4)))
-  Var4D = -99
-  Var3D = -99
-  Var2D = -99
-  Var1D = -99
+
   do i=1,nvars_in
      status = nf90_inquire_variable(ncid, myVarIDs(i), varname, ndims = NN)
      if(status /= nf90_NoErr) print*, 'ERROR: NetCDF variable name cannot be assigned'
      status = nf90_inq_varid(ncid, varname, VarId)
 
+
      if(status /= nf90_NoErr) print*, 'ERROR: NetCDF variable ID for ',varname,' cannot be retrieved'
+
+     Var4D = -99.
+     Var3D = -99.
+     Var2D = -99.
+     Var1D = -99.
+
      ! Loading the variables from NetCDF
      select case(NN)
      case(1)
@@ -141,17 +145,16 @@ subroutine read_wyosonde(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
      ! Assigning the data to RT3/4 variable names
      select case(trim(varname))
      case('HGT')
-        hgt_lev(:dim_len(1),:dim_len(2),0,:) = spread(Var2D,dim=3,ncopies=ntime)
+        hgt_lev(:dim_len(1),:dim_len(2),0,:dim_len(4)) = spread(Var2D,dim=3,ncopies=ntime)
         ! for 2D variables:
      case('T2')
-        temp_lev(:dim_len(1),:dim_len(2),0,:) = Var3D
+        temp_lev(:dim_len(1),:dim_len(2),0,:dim_len(4)) = Var3D
      case('PSFC')
-        press_lev(:dim_len(1),:dim_len(2),0,:) = Var3D
+        press_lev(:dim_len(1),:dim_len(2),0,:dim_len(4)) = Var3D
      case('Q2')
-        relhum_lev(:dim_len(1),:dim_len(2),0,:) = Var3D
+        relhum_lev(:dim_len(1),:dim_len(2),0,:dim_len(4)) = Var3D
         ! for 3D variables:
      case('PHB')
-        hgt_lev = 0
         ! Passing values to RT3 variables:
         hgt_lev(:dim_len(1),:dim_len(2),1:dim_len(3),:dim_len(4)) = Var4D
      case('P')
@@ -286,7 +289,7 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
      elevations = 0
   end if
   NANGLES = NUMMU + nelv
-  
+
   status = nf90_create(trim(ncfile),NF90_CLOBBER,ncid)
   if(status /= nf90_NOERR) stop 'Output NetCDF was not possible to create'
   ! Defining dimensions
@@ -302,7 +305,7 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
   status = nf90_def_var(ncid, "theta_z", NF90_REAL4, (/ mu_id /), var_mu_id)
   status = nf90_def_var(ncid, "freq", NF90_REAL4, (/ freq_id /), var_freq_id)
   status = nf90_def_var(ncid, "stokes", NF90_INT, (/ stok_id /), var_stok_id)
-  status = nf90_def_var(ncid, "layer", NF90_REAl4, (/lyr_id/), var_lyr_id)
+  status = nf90_def_var(ncid, "layer", NF90_REAL, (/lyr_id/), var_lyr_id)
   status = nf90_def_var(ncid, "time", NF90_REAL, (/ time_id /), var_time_id)
   status = nf90_def_var(ncid, "TB_UP_TOA", NF90_REAL4, (/ mu_id, freq_id, stok_id, xn_id, yn_id, time_id /), var_tbup1_id)
   status = nf90_def_var(ncid, "TB_UP_GRD", NF90_REAL4, (/ mu_id, freq_id, stok_id, xn_id, yn_id, time_id /), var_tbup0_id)

@@ -1,9 +1,9 @@
 &inputparam
-	input_file='/Data/gfi/scratch/pga082/data/RTin/WyoRS_Y2014-2018_x001y001ST_01COTUR.nc',
+	input_file='/Data/gfi/scratch/pga082/data/RTin/WyoRS_Y2009-2014_x001y004ST_IGPv03.nc',
 	nx_in=1,
 	nx_fin=1,
 	ny_in=1,
-	ny_fin=1,
+	ny_fin=4,
 	n_freq=14,
      	tau_min=0.0,
 	tau_max=2000.0,
