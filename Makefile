@@ -5,11 +5,11 @@ CF = /usr/bin/gfortran
 HOST = $(shell hostname)
 
 # netCDF library paths:
-ifeq "$(HOST)" "cyclone.hpc.uib.no"
+ifeq "$(HOSTNAME)" "cyclone"
 LIBPATH = $(EBROOTNETCDFMINFORTRAN)/lib
 INCPATH = $(EBROOTNETCDFMINFORTRAN)/include
 else
-ifeq ("$(HOST)", $(filter "$(HOST)","gfi3101963.klientdrift.uib.no" "mysu.yolle"))
+ifeq ("$(HOSTNAME)", $(filter "$(HOSTNAME)","gfi3101963.klientdrift.uib.no" "mysu.yolle"))
 LIBPATH = /usr/lib
 INCPATH = /usr/include
 endif
@@ -27,7 +27,7 @@ BIN = $(BASE)/bin
 SRC = $(BASE)/src
 
 $(BIN)/RS_RT3_run: $(OBJ)/%.o
-	$(CF) -std=legacy -fopenmp -o $@ $(OBJ)/RS_rt3.o $(OBJ)/rt3.o $(OBJ)/radtran3.o \
+	$(CF) -mcmodel=medium -std=legacy -fopenmp -o $@ $(OBJ)/RS_rt3.o $(OBJ)/rt3.o $(OBJ)/radtran3.o \
         $(OBJ)/radutil3.o  $(OBJ)/radscat3.o $(OBJ)/radintg3.o $(OBJ)/radmat.o \
 	$(OBJ)/scat_utilities.o $(OBJ)/dsd_utilities.o $(OBJ)/Fresnel_surf.o \
 	$(OBJ)/mitt_time.o $(OBJ)/RT_ncdf_IO.o -I$(INCPATH) -L$(LIBPATH) -lnetcdff

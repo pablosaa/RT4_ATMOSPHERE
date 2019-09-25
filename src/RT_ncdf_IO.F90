@@ -50,7 +50,7 @@ subroutine read_wyosonde(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
   integer :: VarId
   character(len=10) :: dim_name(4)
   character(len=10) :: varname
-  integer :: i, K, NN, dim_len(4)
+  integer :: i, NN, dim_len(4)
   integer, allocatable, dimension(:) :: myVarIDs
   real, allocatable, dimension(:,:,:,:) :: Var4D
   real, allocatable, dimension(:,:,:) :: Var3D
