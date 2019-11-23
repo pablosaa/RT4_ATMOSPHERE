@@ -292,14 +292,21 @@ C     !PSG: -- end of NetCDF reading routine
 
 c     write(*,29) frq_str  
            
-C     !PSG: Passing temporal variables to old variables (no time)
-           i_time = 0
            call omp_set_num_threads(4)
 !$OMP PARALLEL NUM_THREADS(1) PRIVAD(AUIOF,BUIOF)
 !$OMP DO
-        DO 656, timeidx = 1, ntime
-           write(*,*) 'running on thread: ', OMP_GET_THREAD_NUM(),
-     $          OMP_GET_MAX_THREADS()
+        do 656 nx=1, ngridx ! nx_in,nx_fin
+          write(xstr,'(i3.3)') nx
+                   
+         do 656 ny = 1,ngridy  ! ny_in,ny_fin
+            write(ystr,'(i3.3)') ny
+
+C     !PSG: Passing temporal variables to old variables (no time)
+            i_time = 0
+
+            DO 646, timeidx = 1, ntime
+               write(*,*) 'running on thread: ', OMP_GET_THREAD_NUM(),
+     $              OMP_GET_MAX_THREADS()
 
            hgt_lev = hgt_tmp(:,:,:, timeidx)
            press_lev = press_tmp(:,:,:, timeidx)  ! PSG: i_time)
@@ -428,13 +435,8 @@ c$$$     $ SD_grau//N0graustr//EM_grau//SD_rain//N0rainstr
       
           
         
-        do 646 nx=1, ngridx ! nx_in,nx_fin
-          write(xstr,'(i3.3)') nx
-                   
-         do 646 ny = 1,ngridy  ! ny_in,ny_fin
-
             ! Checking whether the profile passed the qualitity control:
-            if(qidx(nx,ny,timeidx).NE.15) go to 646
+            if(qidx(nx, ny, timeidx).NE.15) go to 646
 
             i_time = i_time + 1
             !write(*,*) 'running on time: ',i_time
@@ -470,7 +472,7 @@ c             if (max_rainwater(nx,ny).le.1e-1) goto 646
           KEXTATMO(I)=0.0D0
  30          CONTINUE
        ENDIF   
-       write(ystr,'(i3.3)') ny
+
 C     PSG: add 'tmp/'
        file_profile='../output/tmp/Profilex'
        file_profile=trim(file_profile)//xstr//'y'//ystr//'f'//frq_str
@@ -950,10 +952,10 @@ C       write(*,*) 'entra a '//FILE_profile//' com outlevels=',OUTLEVELS   ! PSG
 
 
 
- 646      continue
+ 646     enddo                  ! end over time index  
 
     
- 656   enddo                    ! end over time index
+ 656  continue                ! end over ny_grid and nx_grid
 !$OMP END DO
 !$OMP END PARALLEL      
  777  enddo                   ! end over frequency index

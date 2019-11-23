@@ -2,7 +2,7 @@
 CF = /usr/bin/gfortran
 
 # Getting server name:
-HOST = $(shell hostname)
+HOSTNAME = $(shell hostname)
 
 # netCDF library paths:
 ifeq "$(HOSTNAME)" "cyclone"
