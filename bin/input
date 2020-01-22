@@ -1,10 +1,10 @@
 &inputparam
-	input_file='/Data/gfi/scratch/pga082/data/RTin/WyoRS_Y2009-2014_x001y004ST_IGPv03.nc',
+	input_file='/home/pga082/Downloads/wrfout_d01_2005-08-28_00_00_00',
 	nx_in=1,
 	nx_fin=1,
 	ny_in=1,
 	ny_fin=4,
-	n_freq=14,
+	n_freq=2,
      	tau_min=0.0,
 	tau_max=2000.0,
 	FREQ=22.240 23.040 23.840 24.440 26.240 27.840 31.400 51.260 52.280 53.860 54.940 56.660 57.300 58.000,

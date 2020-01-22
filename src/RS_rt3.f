@@ -229,8 +229,8 @@ C        LAM=299.7925/freq !mm
 
         print*,'netCDF input files is '//input_file
 C     !PSG: Calling the NetCDF routine to read data
-        call read_wyosonde(len_trim(input_file),input_file,
-     $       mxgridx,mxgridy,mxlyr,mxtime,hgt_tmp,press_tmp,temp_tmp,
+        call read_wrf(len_trim(input_file), input_file,
+     $       mxgridx, mxgridy, mxlyr, mxtime,hgt_tmp,press_tmp,temp_tmp,
      $       relhum_tmp,mixr_tmp,cloud_water_tmp,
      $       rain_water_tmp, cloud_ice_tmp, snow_tmp, graupel_tmp,
      $       winddir_tmp, windvel_tmp, qidx,
@@ -238,6 +238,10 @@ C     !PSG: Calling the NetCDF routine to read data
      $       yy, mm, dd, hh, origin_str)
         write(*,*) 'output of reading'
 
+        do i=1,30
+           write(*,'(10F7.1)') (temp_tmp(i,j,1,1), j=1,10)
+        enddo
+        stop
         OUTLEVELS(1)=1          ! PSG: moved from befor call RT3 to here
         OUTLEVELS(2)=nlyr+1     ! PSG: N_lay_cut+1
 

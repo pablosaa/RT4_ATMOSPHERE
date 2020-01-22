@@ -45,18 +45,22 @@ subroutine read_wrf(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
   character(len=*), intent(out) :: origin_str
   ! -- end of variable declaration
 
+  integer :: temp_len(4)
   integer :: status
   integer :: ncid, ndims_in, nvars_in, ngatts_in, unlimdimid_in
   integer :: VarId
-  character(len=10) :: dim_name(4)
-  character(len=10) :: varname
-  integer :: i, NN, dim_len(4)
-  integer, allocatable, dimension(:) :: myVarIDs
+  character(len=15), allocatable :: dim_name(:)
+  character(len=15) :: varname
+  integer :: i, j, k, NN
+  integer, allocatable, dimension(:) :: myVarIDs, dim_len
   real, allocatable, dimension(:,:,:,:) :: Var4D
   real, allocatable, dimension(:,:,:) :: Var3D
   real, allocatable, dimension(:,:) :: Var2D
   real, allocatable, dimension(:) :: Var1D
 
+  real, allocatable, dimension(:,:,:,:) :: U_Vel, V_Vel
+  real, parameter :: PI2deg = 45.0/atan(1.)
+  
   ! Initialazing the variables to a fixed value
   hgt_lev = 0.
   temp_lev =0.
@@ -86,6 +90,8 @@ subroutine read_wrf(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
   status = nf90_inquire(ncid, ndims_in, nvars_in, ngatts_in, unlimdimid_in)
   ! Get ID of unlimited dimension
 
+  allocate(dim_len(ndims_in) )
+  allocate(dim_name(ndims_in) )
   !! print*,ndims_in, nvars_in, ngatts_in, unlimdimid_in
   do i=1, ndims_in
      ! assigning dimension name and length:
@@ -101,19 +107,28 @@ subroutine read_wrf(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
         ntime = dim_len(i)
      case default
         print*, 'netCDF file dimension '//trim(dim_name(i))//' unknown!'
-        stop
+        ! stop
      end select
   end do
   allocate(myVarIDs(nvars_in))
   status = nf90_inq_varids(ncid, nvars=NN, varids=myVarIDs)
 
   ! Reading variables:
-  allocate(Var4D(dim_len(1), dim_len(2), dim_len(3), dim_len(4)) )
-  allocate(Var3D(dim_len(1), dim_len(2), dim_len(4)) )
-  allocate(Var2D(dim_len(1), dim_len(2)) )
-  allocate(Var1D(dim_len(4)) )
+  allocate(Var4D(ngridx, ngridy, nlyr, ntime) )  !dim_len(1), dim_len(2), dim_len(3), dim_len(4)) )
+  allocate(Var3D(ngridx, ngridy, ntime) ) !dim_len(1), dim_len(2), dim_len(4)) )
+  allocate(Var2D(ngridx, ngridy) )  !dim_len(1), dim_len(2)) )
+  allocate(Var1D(ntime) )  !dim_len(4)) )
 
+  allocate(U_Vel(ngridx, ngridy, nlyr, ntime) )
+  allocate(V_Vel(ngridx, ngridy, nlyr, ntime) )
+
+  
   ! loop over all variables present in netCDF file
+  press_lev = 0
+  temp_lev = 0
+  relhum_lev = 0
+  hgt_lev = 0
+
   do i=1, nvars_in
      status = nf90_inquire_variable(ncid, myVarIDs(i), varname, ndims = NN)
      if(status /= nf90_NoErr) print*, 'ERROR: NetCDF variable name cannot be assigned'
@@ -135,101 +150,108 @@ subroutine read_wrf(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
      case(3)
         status = nf90_get_var(ncid, VarId, Var3D)
      case(4)
-        status = nf90_get_var(ncid, VarId, Var4D)
+        !status = nf90_inquire_variable(ncid, VarID, dimids=temp_len)
+        status = nf90_get_var(ncid, VarId, Var4D, start=(/1,1,1,1/), count=(/ngridx, ngridy, nlyr, ntime/))
      case default
         print*,trim(varname),'WARNING: neither 4D nor 3D nor 2D variable!!'
         continue
      end select
-     if(status /= nf90_NoErr) print*, 'error getting variable ', trim(varname)
+     if(status /= nf90_NoErr) print*, 'error getting variable ', trim(varname), nf90_strerror(status)
 
      ! Assigning the data to RT3/4 variable names
-     press_lev = 0
-     temp_lev = 0
-     relhum_lev = 0
-     hgt_lev = 0
      select case(trim(varname))
-     !case('HGT')
-     !   hgt_lev(:dim_len(1),:dim_len(2),0,:dim_len(4)) = Var3D
-        ! for 2D variables:
      case('T2')
-        temp_lev(:dim_len(1),:dim_len(2),0,:dim_len(4)) = Var3D
+        temp_lev(:ngridx, :ngridy, 0, :ntime) = Var3D
      case('PSFC')
-        press_lev(:dim_len(1),:dim_len(2),0,:dim_len(4)) = Var3D
+        press_lev(:ngridx, :ngridy, 0, :ntime) = Var3D
      case('Q2')
-        relhum_lev(:dim_len(1),:dim_len(2),0,:dim_len(4)) = Var3D
+        relhum_lev(:ngridx, :ngridy, 0, :ntime) = Var3D
         ! for 3D variables:
      case('PHB')
         ! Passing values to RT3 variables:
-        hgt_lev(:dim_len(1), :dim_len(2), 0:dim_len(3), :dim_len(4)) = Var4D/9.81
+        hgt_lev(:ngridx, :ngridy, 0:nlyr, :ntime) = Var4D/9.81
      case('P_HYD')
         ! Passing values to RT3 variables:
-        press_lev(:dim_len(1),:dim_len(2),1:dim_len(3),:dim_len(4)) = Var4D
+        press_lev(:ngridx, :ngridy, 1:nlyr, :ntime) = Var4D
      case('T')
         ! Passing values to RT3 variables:
-        temp_lev(:dim_len(1),:dim_len(2),1:dim_len(3),:dim_len(4)) = Var4D + 300 ! convert theta to T
+        temp_lev(:ngridx, :ngridy, 1:nlyr, :ntime) = Var4D + 300 ! convert theta to T
+        do k=1,30
+           write(*,'(10F7.1)') (300+Var4D(k,j,1,1), j=1,10)
+        enddo
+
      case('RH')
         ! Passing values to RT3 variables:
-        relhum_lev(:dim_len(1),:dim_len(2),1:dim_len(3),:dim_len(4)) = Var4D
+        relhum_lev(:ngridx, :ngridy, 1:nlyr, :ntime) = Var4D
      case('QVAPOR')
         mixr_lev = 0.
         ! Passing values to RT3 variables:
-        mixr_lev(:dim_len(1),:dim_len(2),1:dim_len(3),:dim_len(4)) = Var4D
+        mixr_lev(:ngridx, :ngridy, 1:nlyr, :ntime) = Var4D
      case('QCLOUD')
         cloud_water_lev = 0
         ! Passing values to RT3 variables:
-        cloud_water_lev(:dim_len(1),:dim_len(2),1:dim_len(3),:dim_len(4)) = Var4D
+        cloud_water_lev(:ngridx, :ngridy, 1:nlyr, :ntime) = Var4D
      case('QRAIN')
         rain_water_lev = 0
         ! Passing values to RT3 variables:
-        rain_water_lev(:dim_len(1),:dim_len(2),1:dim_len(3),:dim_len(4)) = Var4D
+        rain_water_lev(:ngridx, :ngridy, 1:nlyr, :ntime) = Var4D
      case('QICE')
         cloud_ice_lev = 0
         ! Passing values to RT3 variables:
-        cloud_ice_lev(:dim_len(1),:dim_len(2),1:dim_len(3),:dim_len(4)) = Var4D
+        cloud_ice_lev(:ngridx, :ngridy, 1:nlyr, :ntime) = Var4D
      case('QSNOW')
         snow_lev = 0
         ! Passing values to RT3 variables:
-        snow_lev(:dim_len(1),:dim_len(2),1:dim_len(3),:dim_len(4)) = Var4D
+        snow_lev(:ngridx, :ngridy, 1:nlyr, :ntime) = Var4D
      case('QGRAUP')
         graupel_lev = 0
         ! Passing values to RT3 variables:
-        graupel_lev(:dim_len(1),:dim_len(2),1:dim_len(3),:dim_len(4)) = Var4D
+        graupel_lev(:ngridx, :ngridy, 1:nlyr, :ntime) = Var4D
+     case('U')
+        U_Vel = 0
+        ! Passing values to RT3 variables:
+        U_Vel(:ngridx, :ngridy, 1:nlyr, :ntime) = Var4D
+     case('V')
+        V_Vel = 0
+        ! Passing values to RT3 variables:
+        V_Vel(:ngridx, :ngridy, 1:nlyr, :ntime) = Var4D
      case('XLAT')
-        lat(:dim_len(1),:dim_len(2)) = Var3D(:,:,1)
+        lat(:ngridx, :ngridy) = Var3D(:,:,1)
      case('XLONG')
-        lon(:dim_len(1),:dim_len(2)) = Var3D(:,:,1)
+        lon(:ngridx, :ngridy) = Var3D(:,:,1)
      case('year')
-        year(:dim_len(1),:dim_len(2),:dim_len(4)) = Var3D
+        year(:ngridx, :ngridy, :ntime) = Var3D
      case('month')
-        month(:dim_len(1),:dim_len(2),:dim_len(4)) = Var3D
+        month(:ngridx, :ngridy, :ntime) = Var3D
      case('day')
-        day(:dim_len(1),:dim_len(2),:dim_len(4)) = Var3D
+        day(:ngridx, :ngridy, :ntime) = Var3D
      case('hour')
-        hour(:dim_len(1),:dim_len(2),:dim_len(4)) = Var3D
+        hour(:ngridx, :ngridy, :ntime) = Var3D
      case default
         print*, 'variable ',varname,' not assigned yet'
      end select
   end do
 
   ! Non-assigned variables (not present in WRF):
-  winddir_lev = sqrt(-1.)
-  windvel_lev = sqrt(-1.)
-  qidx = 15;
+  windvel_lev(:ngridx, :ngridy, :nlyr, :ntime) = sqrt( U_Vel*U_Vel + V_Vel*V_Vel)
+  winddir_lev(:ngridx, :ngridy, :nlyr, :ntime) = modulo(360.0 - atan2(U_Vel, V_Vel)*PI2deg, 360.0)
+  qidx(:ngridx, :ngridy, :ntime) = 15;
   
   ! ****************************
   ! Retrieving Global Attribute:
-  status = nf90_get_att(ncid,NF90_GLOBAL,'grid_x',del_xy(1))
-  status = nf90_get_att(ncid,NF90_GLOBAL,'grid_y',del_xy(2))
-  status = nf90_get_att(ncid,NF90_GLOBAL,'origin',origin_str)
+  status = nf90_get_att(ncid,NF90_GLOBAL, 'grid_x', del_xy(1))
+  status = nf90_get_att(ncid,NF90_GLOBAL, 'grid_y', del_xy(2))
+  status = nf90_get_att(ncid,NF90_GLOBAL, 'origin', origin_str)
   
   ! ****************************
   ! Closing the NetCDF file
   status = nf90_close(ncid)
   
-  deallocate(myVarIDs, Var4D, Var3D, Var2D, Var1D)
+  deallocate(myVarIDs, Var4D, Var3D, Var2D, Var1D, U_Vel, V_Vel)
 
   return
 end subroutine read_wrf
+! ____________________________________________________________________________
 ! ____________________________________________________________________________
 
 
