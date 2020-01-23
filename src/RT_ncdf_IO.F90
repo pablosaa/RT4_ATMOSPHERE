@@ -125,7 +125,7 @@ subroutine read_wrf(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
   
   ! loop over all variables present in netCDF file
   press_lev = 0
-  temp_lev = 0
+  temp_lev = 0.0d0
   relhum_lev = 0
   hgt_lev = 0
 
@@ -153,7 +153,7 @@ subroutine read_wrf(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
         !status = nf90_inquire_variable(ncid, VarID, dimids=temp_len)
         status = nf90_get_var(ncid, VarId, Var4D, start=(/1,1,1,1/), count=(/ngridx, ngridy, nlyr, ntime/))
      case default
-        print*,trim(varname),'WARNING: neither 4D nor 3D nor 2D variable!!'
+        print*, trim(varname),'WARNING: neither 4D nor 3D nor 2D variable!!'
         continue
      end select
      if(status /= nf90_NoErr) print*, 'error getting variable ', trim(varname), nf90_strerror(status)
@@ -176,8 +176,8 @@ subroutine read_wrf(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
      case('T')
         ! Passing values to RT3 variables:
         temp_lev(:ngridx, :ngridy, 1:nlyr, :ntime) = Var4D + 300 ! convert theta to T
-        do k=1,30
-           write(*,'(10F7.1)') (300+Var4D(k,j,1,1), j=1,10)
+        do k=1,mxgridx
+           write(*,'(10F7.1)') (temp_lev(k,j,1,1), j=1,mxgridy)
         enddo
 
      case('RH')

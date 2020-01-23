@@ -9,9 +9,12 @@ ifeq "$(HOSTNAME)" "cyclone"
 LIBPATH = $(EBROOTNETCDFMINFORTRAN)/lib
 INCPATH = $(EBROOTNETCDFMINFORTRAN)/include
 else
-ifeq ("$(HOSTNAME)", $(filter "$(HOSTNAME)","gfi3101963.klientdrift.uib.no" "mysu.yolle"))
+ifeq ("$(HOSTNAME)", $(filter "$(HOSTNAME)","gfi3101963.klientdrift.uib.no" "mysu.yolle" ))
 LIBPATH = /usr/lib
 INCPATH = /usr/include
+else
+LIBPATH = /usr/lib/hpc/gnu7/openmpi3/netcdf-fortran/4.5.2/lib64
+INCPATH = /usr/lib/hpc/gnu7/openmpi3/netcdf-fortran/4.5.2/include
 endif
 endif
 

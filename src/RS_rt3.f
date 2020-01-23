@@ -162,6 +162,7 @@ C     !PSG: Following temporal varaibles is to include NetCDF time depending
      $      GAS_EXTINCTION, SD_snow, N_0snowDsnow,EM_snow,SP,SD_grau,
      $      N_0grauDgrau, EM_grau,SD_rain, N_0rainD
        integer istatus
+       integer, allocatable :: mysu(:)
 C     !PSG: -- end of definition for NetCDF temporal variables
 
       LOGICAL     PHASEFLAG
@@ -226,7 +227,10 @@ c     WRITE (18,*) nx_in,ny_in,ny_in,ny_fin,tau_min,tau_max
 
         PHASEFLAG=.true.
 C        LAM=299.7925/freq !mm 
-
+        allocate(mysu(nx_fin*ny_fin))
+        mysu =(/(i,i=1,nx_fin*ny_fin)/)
+        print*, 'mysu= ', mysu
+        deallocate(mysu)
         print*,'netCDF input files is '//input_file
 C     !PSG: Calling the NetCDF routine to read data
         call read_wrf(len_trim(input_file), input_file,
@@ -238,8 +242,8 @@ C     !PSG: Calling the NetCDF routine to read data
      $       yy, mm, dd, hh, origin_str)
         write(*,*) 'output of reading'
 
-        do i=1,30
-           write(*,'(10F7.1)') (temp_tmp(i,j,1,1), j=1,10)
+        do i=1,mxgridx
+           write(*,'(10F7.1)') (temp_tmp(i, j, 1, 1), j=1,mxgridy)
         enddo
         stop
         OUTLEVELS(1)=1          ! PSG: moved from befor call RT3 to here
