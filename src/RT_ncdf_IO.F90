@@ -20,12 +20,13 @@
 ! The loaded variables are introduced to the RT3/RT4 radiative transfer code for
 ! calculation of Brightness Temperature Fields.
 ! -------------------------------------------------------------------------------------
-subroutine read_wrf(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
-     &press_lev,temp_lev,relhum_lev,mixr_lev, cloud_water_lev,&
+subroutine read_wrf(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,&
+     &press_lev,relhum_lev,mixr_lev, cloud_water_lev,&
      &rain_water_lev,cloud_ice_lev,snow_lev,graupel_lev, winddir_lev, windvel_lev,&
      &qidx, ngridx, ngridy, del_xy, nlyr, ntime, lat, lon, year, month, day, hour,&
      &origin_str)
   use netcdf
+  use variables, only : temp_tmp, hgt_tmp
   implicit none
 
   integer, intent(in) :: ncflen
@@ -34,7 +35,7 @@ subroutine read_wrf(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
   ! -- Here come variables declaration alike the onses used by RT3
 
   integer, intent(in) ::   mxgridx, mxgridy, mxlyr, mxtime
-  real(kind=8), intent(inout), dimension(mxgridx,mxgridy,0:mxlyr,mxtime) :: hgt_lev,temp_lev,press_lev,relhum_lev
+  real(kind=8), intent(inout), dimension(mxgridx,mxgridy,0:mxlyr,mxtime) :: press_lev,relhum_lev
   real(kind=8), intent(inout), dimension(mxgridx,mxgridy,mxlyr,mxtime) :: mixr_lev, cloud_water_lev,rain_water_lev,cloud_ice_lev
   real(kind=8), intent(inout), dimension(mxgridx,mxgridy,mxlyr,mxtime) :: snow_lev,graupel_lev, winddir_lev, windvel_lev
   integer(kind=4), intent(inout), dimension(mxgridx,mxgridy,mxtime) :: qidx
@@ -43,6 +44,7 @@ subroutine read_wrf(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
   real(kind=4), intent(out), dimension(mxgridx, mxgridy, mxtime) :: year, month, day, hour
   real(kind=4), intent(out) :: del_xy(2)
   character(len=*), intent(out) :: origin_str
+
   ! -- end of variable declaration
 
   integer :: temp_len(4)
@@ -62,8 +64,8 @@ subroutine read_wrf(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
   real, parameter :: PI2deg = 45.0/atan(1.)
   
   ! Initialazing the variables to a fixed value
-  hgt_lev = 0.
-  temp_lev =0.
+  !hgt_lev = 0.
+  !temp_lev =0.
   press_lev = 0.
   relhum_lev = 0.
   cloud_water_lev = 0.
@@ -113,6 +115,12 @@ subroutine read_wrf(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
   allocate(myVarIDs(nvars_in))
   status = nf90_inq_varids(ncid, nvars=NN, varids=myVarIDs)
 
+  !nsu = ntime
+  !allocate(mysu(nsu))
+  !mysu =(/(i, i=1, nsu)/)
+  allocate(temp_tmp(ngridx, ngridy, 0:nlyr, ntime) )
+  allocate(hgt_tmp(ngridx, ngridy, 0:nlyr, ntime) )
+  
   ! Reading variables:
   allocate(Var4D(ngridx, ngridy, nlyr, ntime) )  !dim_len(1), dim_len(2), dim_len(3), dim_len(4)) )
   allocate(Var3D(ngridx, ngridy, ntime) ) !dim_len(1), dim_len(2), dim_len(4)) )
@@ -125,9 +133,8 @@ subroutine read_wrf(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
   
   ! loop over all variables present in netCDF file
   press_lev = 0
-  temp_lev = 0.0d0
+  temp_tmp = 0.0d0
   relhum_lev = 0
-  hgt_lev = 0
 
   do i=1, nvars_in
      status = nf90_inquire_variable(ncid, myVarIDs(i), varname, ndims = NN)
@@ -160,8 +167,10 @@ subroutine read_wrf(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
 
      ! Assigning the data to RT3/4 variable names
      select case(trim(varname))
+     case('HGT')
+        hgt_tmp(:ngridx, :ngridy, 0, :ntime) = Var3D
      case('T2')
-        temp_lev(:ngridx, :ngridy, 0, :ntime) = Var3D
+        temp_tmp(:ngridx, :ngridy, 0, :ntime) = Var3D
      case('PSFC')
         press_lev(:ngridx, :ngridy, 0, :ntime) = Var3D
      case('Q2')
@@ -169,15 +178,20 @@ subroutine read_wrf(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
         ! for 3D variables:
      case('PHB')
         ! Passing values to RT3 variables:
-        hgt_lev(:ngridx, :ngridy, 0:nlyr, :ntime) = Var4D/9.81
+        hgt_tmp(:ngridx, :ngridy, 1:nlyr, :ntime) = Var4D/9.81
+        print*, 'height is: '
+        do k=1,mxgridx
+           write(*,'(10F7.1)') (Var4D(k,j,10,2)/9.81, j=1,mxgridy)
+        enddo
+
      case('P_HYD')
         ! Passing values to RT3 variables:
         press_lev(:ngridx, :ngridy, 1:nlyr, :ntime) = Var4D
      case('T')
         ! Passing values to RT3 variables:
-        temp_lev(:ngridx, :ngridy, 1:nlyr, :ntime) = Var4D + 300 ! convert theta to T
+        temp_tmp(:ngridx, :ngridy, 1:nlyr, :ntime) = Var4D + 300 ! convert theta to T
         do k=1,mxgridx
-           write(*,'(10F7.1)') (temp_lev(k,j,1,1), j=1,mxgridy)
+           write(*,'(10F7.1)') (300 + Var4D(k,j,1,1), j=1,mxgridy)
         enddo
 
      case('RH')
@@ -248,7 +262,7 @@ subroutine read_wrf(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
   status = nf90_close(ncid)
   
   deallocate(myVarIDs, Var4D, Var3D, Var2D, Var1D, U_Vel, V_Vel)
-
+  
   return
 end subroutine read_wrf
 ! ____________________________________________________________________________

@@ -1,3 +1,8 @@
+      module variables
+      integer ngridx, ngridy, nlyr, ntime
+      real(kind=8), allocatable, dimension(:,:,:,:) :: hgt_tmp,temp_tmp
+      end module variables
+      
       program model_radtran_MW
 
 C     Radiative transfer code to process COSMO-model, WRF-model derived profiles or
@@ -20,12 +25,12 @@ C     * parallerism support via OpenMP (beta-version)
 C     +-------+---------+---------+---------+---------+---------+---------+-+
 C+----------------------------------------------------------------------
 C                    **  RADTRAN I/O SPECIFICATIONS  **
-
+      use variables
       implicit none
       include "omp_lib.h"    ! PSG: including OpenMP library
       include    'parameters.inc'
       integer i,j,k,isamp,jj,jsamp,nf,nx,ny,nz,
-     $n_verify_input,ngridx,ngridy,nlyr,nlev,
+     $n_verify_input,nlev, !,ngridx,ngridy,nlyr
      $nx_in,nx_fin,ny_in,ny_fin,offset1,offset2,length1,length2
       character Nzstr*3,xstr*3,ystr*3,   ! PSG: Nzstr*2
      $ xstr1*3,ystr1*3,xstr2*3,ystr2*3,
@@ -138,11 +143,11 @@ c      real*8       relhum(mxgridx,mxgridy,mxlyr)
      $H_top,DH_top_intersect,K_extbot,K_exttop,T_bot,T_top
  
 C     !PSG: Following temporal varaibles is to include NetCDF time depending
-       integer n_freq, ifreq, timeidx, i_time, ntime    ! PSG: new block...
+       integer n_freq, ifreq, timeidx, i_time    ! PSG: new block... , ntime
        character frq_idx*5
-       real*8 hgt_tmp(mxgridx,mxgridy,0:mxlyr,mxtime)
+       !real*8 hgt_tmp(mxgridx,mxgridy,0:mxlyr,mxtime)
        real*8 press_tmp(mxgridx,mxgridy,0:mxlyr,mxtime)
-       real*8 temp_tmp(mxgridx,mxgridy,0:mxlyr,mxtime)
+       !real*8 temp_tmp(mxgridx,mxgridy,0:mxlyr,mxtime) ! PSG: temp for module
        real*8 relhum_tmp(mxgridx,mxgridy,0:mxlyr,mxtime)
        real*8 mixr_tmp(mxgridx,mxgridy,0:mxlyr,mxtime)
        real*8 cloud_water_tmp(mxgridx,mxgridy,mxlyr,mxtime)
@@ -162,7 +167,7 @@ C     !PSG: Following temporal varaibles is to include NetCDF time depending
      $      GAS_EXTINCTION, SD_snow, N_0snowDsnow,EM_snow,SP,SD_grau,
      $      N_0grauDgrau, EM_grau,SD_rain, N_0rainD
        integer istatus
-       integer, allocatable :: mysu(:)
+
 C     !PSG: -- end of definition for NetCDF temporal variables
 
       LOGICAL     PHASEFLAG
@@ -227,24 +232,30 @@ c     WRITE (18,*) nx_in,ny_in,ny_in,ny_fin,tau_min,tau_max
 
         PHASEFLAG=.true.
 C        LAM=299.7925/freq !mm 
-        allocate(mysu(nx_fin*ny_fin))
-        mysu =(/(i,i=1,nx_fin*ny_fin)/)
-        print*, 'mysu= ', mysu
-        deallocate(mysu)
+                
         print*,'netCDF input files is '//input_file
 C     !PSG: Calling the NetCDF routine to read data
         call read_wrf(len_trim(input_file), input_file,
-     $       mxgridx, mxgridy, mxlyr, mxtime,hgt_tmp,press_tmp,temp_tmp,
+     $       mxgridx, mxgridy, mxlyr, mxtime,press_tmp,
      $       relhum_tmp,mixr_tmp,cloud_water_tmp,
      $       rain_water_tmp, cloud_ice_tmp, snow_tmp, graupel_tmp,
      $       winddir_tmp, windvel_tmp, qidx,
      $       ngridx, ngridy, deltaxy, nlyr, ntime, lat, lon,
      $       yy, mm, dd, hh, origin_str)
-        write(*,*) 'output of reading'
+
+        print*, 'mysu= ', ngridx, ngridy, nlyr, ntime
+
+        write(*,*) 'output of reading', shape(temp_tmp)
 
         do i=1,mxgridx
            write(*,'(10F7.1)') (temp_tmp(i, j, 1, 1), j=1,mxgridy)
         enddo
+        print*, 'height is: '
+        do i=1,mxgridx
+           write(*,'(10F7.1)') (hgt_tmp(i,j,10,2), j=1,mxgridy)
+        enddo
+
+        deallocate(temp_tmp)
         stop
         OUTLEVELS(1)=1          ! PSG: moved from befor call RT3 to here
         OUTLEVELS(2)=nlyr+1     ! PSG: N_lay_cut+1

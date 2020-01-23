@@ -17,7 +17,7 @@ bin/*.log
 
 # Compiled Object files
 *.o
-obj/
+obj/*
 *.obj
 
 # Precompiled Headers
