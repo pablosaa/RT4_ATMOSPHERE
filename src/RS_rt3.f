@@ -1,6 +1,17 @@
       module variables
       integer ngridx, ngridy, nlyr, ntime
-      real(kind=8), allocatable, dimension(:,:,:,:) :: hgt_tmp,temp_tmp
+      integer(kind=4), allocatable :: qidx(:,:,:)
+      real(kind=8), allocatable, dimension(:,:,:,:) :: hgt_tmp,temp_tmp,
+     $     press_tmp, rh_tmp,
+     $     mixr_tmp, cloud_water_tmp,
+     $     rain_water_tmp, cloud_ice_tmp, snow_tmp, graupel_tmp,
+     $     winddir_tmp, windvel_tmp
+      real(kind=4) ,allocatable, dimension(:,:) :: lat, lon
+      character(len=:), allocatable :: TimeStamp(:)
+
+! Constants:
+      real, parameter :: PI = dacos(-1.0d0)
+      real, parameter :: PI2deg = 45.0/atan(1.0d0)
       end module variables
       
       program model_radtran_MW
@@ -47,7 +58,7 @@ C                    **  RADTRAN I/O SPECIFICATIONS  **
        INTEGER     MAXLEG, NLEGEN, NUMRAD,NLEGENcw,NLEGENci,
      $NLEGENgr,NLEGENsn,NLEGENrr,aziorder, NUMAZIMUTHS,SRC_CODE
       REAL*8        RAD1, RAD2,refre,refim,SP
-      REAL*8 N_0sr,Coeff_corr, AD,BD,ALPHA,GAMMA,pi,emissivity,
+      REAL*8 N_0sr,Coeff_corr, AD,BD,ALPHA,GAMMA,emissivity, ! PSG: ,pi
      $ n0S,lambda_D,tmp,N_0snowD,N_0grauD,N_0snowDsnow,
      $ N_0grauDgrau,N_0rainD,Coeff_snow,a_mgraup, b_g, b_snow,
      $ a_msnow,
@@ -146,21 +157,21 @@ C     !PSG: Following temporal varaibles is to include NetCDF time depending
        integer n_freq, ifreq, timeidx, i_time    ! PSG: new block... , ntime
        character frq_idx*5
        !real*8 hgt_tmp(mxgridx,mxgridy,0:mxlyr,mxtime)
-       real*8 press_tmp(mxgridx,mxgridy,0:mxlyr,mxtime)
+       !real*8 press_tmp(mxgridx,mxgridy,0:mxlyr,mxtime)
        !real*8 temp_tmp(mxgridx,mxgridy,0:mxlyr,mxtime) ! PSG: temp for module
-       real*8 relhum_tmp(mxgridx,mxgridy,0:mxlyr,mxtime)
-       real*8 mixr_tmp(mxgridx,mxgridy,0:mxlyr,mxtime)
-       real*8 cloud_water_tmp(mxgridx,mxgridy,mxlyr,mxtime)
-       real*8 rain_water_tmp(mxgridx,mxgridy,mxlyr,mxtime)
-       real*8 cloud_ice_tmp(mxgridx,mxgridy,mxlyr,mxtime)
-       real*8 snow_tmp(mxgridx,mxgridy,mxlyr,mxtime)
-       real*8 graupel_tmp(mxgridx,mxgridy,mxlyr,mxtime)
-       real*8 winddir_tmp(mxgridx,mxgridy,mxlyr,mxtime)
-       real*8 windvel_tmp(mxgridx,mxgridy,mxlyr,mxtime)
-       integer*4 qidx(mxgridx,mxgridy,mxtime)
+       !real*8 relhum_tmp(mxgridx,mxgridy,0:mxlyr,mxtime)
+       !real*8 mixr_tmp(mxgridx,mxgridy,0:mxlyr,mxtime)
+       !real*8 cloud_water_tmp(mxgridx,mxgridy,mxlyr,mxtime)
+       !real*8 rain_water_tmp(mxgridx,mxgridy,mxlyr,mxtime)
+       !real*8 cloud_ice_tmp(mxgridx,mxgridy,mxlyr,mxtime)
+       !real*8 snow_tmp(mxgridx,mxgridy,mxlyr,mxtime)
+       !real*8 graupel_tmp(mxgridx,mxgridy,mxlyr,mxtime)
+       !real*8 winddir_tmp(mxgridx,mxgridy,mxlyr,mxtime)
+       !real*8 windvel_tmp(mxgridx,mxgridy,mxlyr,mxtime)
+       !integer*4 qidx(mxgridx,mxgridy,mxtime)
        real*4 yy(mxgridx,mxgridy,mxtime), mm(mxgridx,mxgridy,mxtime)
        real*4 dd(mxgridx,mxgridy,mxtime), hh(mxgridx,mxgridy,mxtime)
-       real*4 lat(mxgridx,mxgridy),lon(mxgridx,mxgridy)
+       !real*4 lat(mxgridx,mxgridy),lon(mxgridx,mxgridy)
 
        namelist/inputparam/input_file, nx_in,nx_fin,ny_in,ny_fin,n_freq,
      $      tau_min,tau_max, FREQ,
@@ -178,7 +189,7 @@ C     !PSG: -- end of definition for NetCDF temporal variables
 c     The following parameters are set for the TMI sensor
 
        Im=(0.0d0,1.0d0)
-       pi = dacos(-1.0d0)
+       !pi = dacos(-1.0d0)
 c    some inputs variable  
        Nstokes=2
 C       N_lay_cut=135  ! PSG: commented, not needed
@@ -236,26 +247,27 @@ C        LAM=299.7925/freq !mm
         print*,'netCDF input files is '//input_file
 C     !PSG: Calling the NetCDF routine to read data
         call read_wrf(len_trim(input_file), input_file,
-     $       mxgridx, mxgridy, mxlyr, mxtime,press_tmp,
-     $       relhum_tmp,mixr_tmp,cloud_water_tmp,
-     $       rain_water_tmp, cloud_ice_tmp, snow_tmp, graupel_tmp,
-     $       winddir_tmp, windvel_tmp, qidx,
-     $       ngridx, ngridy, deltaxy, nlyr, ntime, lat, lon,
-     $       yy, mm, dd, hh, origin_str)
+     $       deltaxy,
+     $       origin_str)
 
         print*, 'mysu= ', ngridx, ngridy, nlyr, ntime
 
-        write(*,*) 'output of reading', shape(temp_tmp)
+        write(*,*) 'output of reading', shape(rh_tmp)
 
         do i=1,mxgridx
-           write(*,'(10F7.1)') (temp_tmp(i, j, 1, 1), j=1,mxgridy)
+!write(*,'(10F9.3)') (windvel_tmp(i,j,5,1), j=1,mxgridy)
+           print*, TimeStamp(i)
         enddo
-        print*, 'height is: '
+        print*, 'press at ground is: ', origin_str
         do i=1,mxgridx
-           write(*,'(10F7.1)') (hgt_tmp(i,j,10,2), j=1,mxgridy)
+           write(*,'(10F9.3)') (winddir_tmp(i,j,1,2), j=1,mxgridy)
         enddo
 
-        deallocate(temp_tmp)
+        deallocate(temp_tmp, press_tmp, rh_tmp, mixr_tmp)
+        deallocate(cloud_water_tmp, rain_water_tmp, cloud_ice_tmp)
+        deallocate(snow_tmp, graupel_tmp, windvel_tmp, winddir_tmp)
+        deallocate(qidx)
+        deallocate(TimeStamp)
         stop
         OUTLEVELS(1)=1          ! PSG: moved from befor call RT3 to here
         OUTLEVELS(2)=nlyr+1     ! PSG: N_lay_cut+1
@@ -330,7 +342,7 @@ C     !PSG: Passing temporal variables to old variables (no time)
            hgt_lev = hgt_tmp(:,:,:, timeidx)
            press_lev = press_tmp(:,:,:, timeidx)  ! PSG: i_time)
            temp_lev = temp_tmp(:,:,:, timeidx)
-           relhum_lev = relhum_tmp(:,:,:, timeidx)
+           relhum_lev = rh_tmp(:,:,:, timeidx)
            cloud_water = cloud_water_tmp(:,:,:, timeidx)
            rain_water = rain_water_tmp(:,:,:, timeidx)
            cloud_ice = cloud_ice_tmp(:,:,:, timeidx)
