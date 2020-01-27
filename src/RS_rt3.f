@@ -2,7 +2,7 @@
       integer ngridx, ngridy, nlyr, ntime
       integer(kind=4), allocatable :: qidx(:,:,:)
       real(kind=8), allocatable, dimension(:,:,:,:) :: hgt_tmp,temp_tmp,
-     $     press_tmp, rh_tmp,
+     $     press_tmp, relhum_tmp,
      $     mixr_tmp, cloud_water_tmp,
      $     rain_water_tmp, cloud_ice_tmp, snow_tmp, graupel_tmp,
      $     winddir_tmp, windvel_tmp
@@ -247,23 +247,23 @@ C        LAM=299.7925/freq !mm
         print*,'netCDF input files is '//input_file
 C     !PSG: Calling the NetCDF routine to read data
         call read_wrf(len_trim(input_file), input_file,
-     $       deltaxy,
-     $       origin_str)
+     $       deltaxy, origin_str)
 
         print*, 'mysu= ', ngridx, ngridy, nlyr, ntime
 
-        write(*,*) 'output of reading', shape(rh_tmp)
+        write(*,*) 'output of reading', shape(relhum_tmp)
 
-        do i=1,mxgridx
-!write(*,'(10F9.3)') (windvel_tmp(i,j,5,1), j=1,mxgridy)
+        do i=1, ntime
+           write(*,'(10F9.3)') (relhum_tmp(i,j,5,1), j=1,mxgridy)
            print*, TimeStamp(i)
+           write(*,'(10F9.3)') (temp_tmp(i,j,5,1), j=1,mxgridy)
         enddo
         print*, 'press at ground is: ', origin_str
-        do i=1,mxgridx
-           write(*,'(10F9.3)') (winddir_tmp(i,j,1,2), j=1,mxgridy)
+        do i=1, ntime
+           write(*,'(10F9.3)') (relhum_tmp(i,j,1,1), j=1,mxgridy)
         enddo
 
-        deallocate(temp_tmp, press_tmp, rh_tmp, mixr_tmp)
+        deallocate(temp_tmp, press_tmp, relhum_tmp, mixr_tmp)
         deallocate(cloud_water_tmp, rain_water_tmp, cloud_ice_tmp)
         deallocate(snow_tmp, graupel_tmp, windvel_tmp, winddir_tmp)
         deallocate(qidx)
@@ -342,7 +342,7 @@ C     !PSG: Passing temporal variables to old variables (no time)
            hgt_lev = hgt_tmp(:,:,:, timeidx)
            press_lev = press_tmp(:,:,:, timeidx)  ! PSG: i_time)
            temp_lev = temp_tmp(:,:,:, timeidx)
-           relhum_lev = rh_tmp(:,:,:, timeidx)
+           relhum_lev = relhum_tmp(:,:,:, timeidx)
            cloud_water = cloud_water_tmp(:,:,:, timeidx)
            rain_water = rain_water_tmp(:,:,:, timeidx)
            cloud_ice = cloud_ice_tmp(:,:,:, timeidx)

@@ -43,7 +43,7 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   integer :: i, j, k, NN
   integer, allocatable, dimension(:) :: myVarIDs, dim_len
   
-  real, allocatable, dimension(:,:,:,:) :: U_Vel, V_Vel
+  real(kind=8), allocatable, dimension(:,:,:,:) :: U_Vel, V_Vel, mixratio
 
   
   ! -----------------------------------------------------------------------------
@@ -89,7 +89,7 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   allocate( hgt_tmp(ngridx, ngridy, 0:nlyr, ntime) )
   allocate( temp_tmp(ngridx, ngridy, 0:nlyr, ntime) )
   allocate( press_tmp(ngridx, ngridy, 0:nlyr, ntime) )
-  allocate( rh_tmp(ngridx, ngridy, 0:nlyr, ntime) )
+  allocate( relhum_tmp(ngridx, ngridy, 0:nlyr, ntime) )
   allocate( mixr_tmp(ngridx, ngridy, nlyr, ntime) )
   allocate( cloud_water_tmp(ngridx, ngridy, nlyr, ntime) )
   allocate( rain_water_tmp(ngridx, ngridy, nlyr, ntime) )
@@ -102,13 +102,14 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   allocate( lat(ngridx, ngridy),  lon(ngridx, ngridy) )
   
   ! For local variables:
+  allocate(mixratio(ngridx, ngridy, 0:nlyr, ntime) )
   allocate(U_Vel(ngridx, ngridy, nlyr, ntime) )
   allocate(V_Vel(ngridx, ngridy, nlyr, ntime) )
 
   ! Initialazing the variables to a fixed value
   press_tmp = 0.0d0
   temp_tmp = 0.0d0
-  rh_tmp = 0.0d0
+  relhum_tmp = 0.0d0
 
   ! loop over all variables present in netCDF file
   do i=1, nvars_in
@@ -119,6 +120,7 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
      if(status /= nf90_NoErr) print*, 'ERROR: NetCDF variable ID for ',trim(varname),' cannot be retrieved'
 
      ! Assigning the data to RT3/4 variable names
+     status = nf90_NoErr
      select case(trim(varname))
         ! *** Reading for WRF SURFACE variables:
      case('T2')
@@ -126,7 +128,7 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
      case('PSFC')
         status = nf90_get_var(ncid, VarId, press_tmp(:, :, 0, :))
      case('Q2')
-        status = nf90_get_var(ncid, VarId, rh_tmp(:, :, 0, :))
+        status = nf90_get_var(ncid, VarId, mixratio(:, :, 0, :))
      case('XLAT')
         status = nf90_get_var(ncid, VarId, lat, start=(/1,1,1/), count=(/ngridx, ngridy, 1/))
      case('XLONG')
@@ -137,12 +139,12 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
         hgt_tmp = hgt_tmp/9.81
      case('P_HYD')
         status = nf90_get_var(ncid, VarId, press_tmp(:, :, 1:nlyr, :))
+        press_tmp = press_tmp*1E-2  ! [hPa]
      case('T')
         status = nf90_get_var(ncid, VarId, temp_tmp(:, :, 1:nlyr, :))
-        temp_tmp(:, :, 1:nlyr, :) = temp_tmp(:, :, 1:nlyr, :) + 300
+        call PERTHETA2T(ngridx, ngridy, nlyr, ntime, temp_tmp(:, :, 1:nlyr, :), temp_tmp(:, :, 1:nlyr, :) )
      case('QVAPOR')
-        status = nf90_get_var(ncid, VarId, rh_tmp(:, :, 1:nlyr, :))
-        mixr_tmp = rh_tmp(:, :, 1:nlyr, :)
+        status = nf90_get_var(ncid, VarId, mixratio(:, :, 1:nlyr, :))
      case('QCLOUD')
         status = nf90_get_var(ncid, VarId, cloud_water_tmp)
      case('QRAIN')
@@ -167,7 +169,11 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
 
   end do
 
-  ! Non-assigned variables (not present in WRF):
+  ! ---
+  ! Variables not present in WRF:
+  call mixr2rh(ngridx, ngridy, 1+nlyr, ntime,&
+       & mixratio, temp_tmp, press_tmp, relhum_tmp)
+  mixr_tmp = 1E3*mixratio(:, :, 1:nlyr, :)
   windvel_tmp(:ngridx, :ngridy, :nlyr, :ntime) = sqrt( U_Vel*U_Vel + V_Vel*V_Vel)
   winddir_tmp(:ngridx, :ngridy, :nlyr, :ntime) = modulo(360.0 - atan2(U_Vel, V_Vel)*PI2deg, 360.0)
   qidx(:ngridx, :ngridy, :ntime) = 15;
@@ -197,7 +203,7 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   ! Closing the NetCDF file
   status = nf90_close(ncid)
   
-  deallocate(myVarIDs, dim_name, dim_len, U_Vel, V_Vel)
+  deallocate(myVarIDs, dim_name, dim_len, U_Vel, V_Vel, mixratio)
   
   return
 end subroutine read_wrf
@@ -1162,3 +1168,51 @@ subroutine interp1_1D(Xin, Yin, Nin, X0, N0, Xout, Nout, Yout, Nstk, Nflx, Nlev)
   
 end subroutine interp1_1D
 
+! ---------------------------------------------------------------
+! HUMIDITY CONVERSION FORMULAS
+! Calculation formulas for humidity (B210973EN-F)
+! By (c) VAISALA 2003
+! https://www.hatchability.com/Vaisala.pdf
+subroutine mixr2rh(nx, ny, nz, nt, MIXR, P, T, RH)
+  implicit none
+  integer, intent(in) :: nx, ny, nz, nt
+  real(kind=8), intent(in), dimension(nx,ny,nz,nt) :: MIXR, P, T
+  real(kind=8), intent(out), dimension(nx,ny,nz,nt) :: RH
+
+  integer :: i
+  real, dimension(nx,ny,nz,nt) :: PWS, etha, A
+  real, parameter :: COEFF = 2.16679 ! [g K J^-1]
+  real, parameter :: Tc = 647.096  ! critical temperature [K]
+  real, parameter :: Pc = 220640   ! critical pressure [hPa]
+  real, parameter :: B  = 0.6219907 ! constant for air [kg/kg]
+  real, parameter :: CC(6) = (/ -7.85951783, 1.84408259, &
+       & -11.7866497, 22.6807411, -15.9618719, 1.80122502/)
+  real, parameter :: EE(6) = (/1.0, 1.5, 3.0, 3.5, 4.0, 7.5/)
+  etha = 1-T/Tc
+  A = 0.0
+  print*, 'drinnen MIXR2RH:'
+  do i=1, 6
+     A = A + CC(i)*(etha**EE(i))
+     print*, i, CC(i), 2.0**EE(i)
+  end do
+  print*, (etha(i,1,1,1), i=1,6)
+  PWS = Pc*exp(A*Tc/T)
+  !RH = 1E-3*MIXR*T/PWS/COEFF
+  !RH = 100*PW/PWS
+  RH = 100*MIXR*P/(MIXR + B)/PWS
+end subroutine mixr2rh
+
+! -----------------------------------------------------------------
+! CONVERT perturbation potential temperature (theta-t0)
+! to Temperature. Where thete: Potential Temperature and T0=300K
+subroutine PERTHETA2T(nx, ny, nz, nt, Tper, T)
+  implicit none
+  integer, intent(in) :: nx, ny, nz, nt
+  real(kind=8), intent(in), dimension(nx,ny,nz,nt) :: Tper
+  real(kind=8), intent(inout), dimension(nx,ny,nz,nt) :: T
+  real, parameter :: T0 = 300 ! K
+  real, parameter :: P0 = 1006 ! hPa
+  real, parameter :: kappa = 0.343
+
+  T = Tper + 300
+end subroutine PERTHETA2T
