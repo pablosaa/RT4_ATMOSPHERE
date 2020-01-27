@@ -249,26 +249,18 @@ C     !PSG: Calling the NetCDF routine to read data
         call read_wrf(len_trim(input_file), input_file,
      $       deltaxy, origin_str)
 
-        print*, 'mysu= ', ngridx, ngridy, nlyr, ntime
+        !print*, 'mysu= ', ngridx, ngridy, nlyr, ntime
 
-        write(*,*) 'output of reading', shape(relhum_tmp)
+        !do i=1, ntime
+        !   write(*,'(10F9.3)') (cloud_ice_tmp(i,j,5,1), j=1,mxgridy)
+        !   print*, TimeStamp(i)
+        !   write(*,'(10F9.3)') (temp_tmp(i,j,5,1), j=1,mxgridy)
+        !enddo
+        !print*, 'press at ground is: ', origin_str
+        !do i=1, ntime
+        !   write(*,'(10F9.3)') (relhum_tmp(i,j,1,1), j=1,mxgridy)
+        !enddo
 
-        do i=1, ntime
-           write(*,'(10F9.3)') (relhum_tmp(i,j,5,1), j=1,mxgridy)
-           print*, TimeStamp(i)
-           write(*,'(10F9.3)') (temp_tmp(i,j,5,1), j=1,mxgridy)
-        enddo
-        print*, 'press at ground is: ', origin_str
-        do i=1, ntime
-           write(*,'(10F9.3)') (relhum_tmp(i,j,1,1), j=1,mxgridy)
-        enddo
-
-        deallocate(temp_tmp, press_tmp, relhum_tmp, mixr_tmp)
-        deallocate(cloud_water_tmp, rain_water_tmp, cloud_ice_tmp)
-        deallocate(snow_tmp, graupel_tmp, windvel_tmp, winddir_tmp)
-        deallocate(qidx)
-        deallocate(TimeStamp)
-        stop
         OUTLEVELS(1)=1          ! PSG: moved from befor call RT3 to here
         OUTLEVELS(2)=nlyr+1     ! PSG: N_lay_cut+1
 
@@ -326,16 +318,16 @@ c     write(*,29) frq_str
            call omp_set_num_threads(4)
 !$OMP PARALLEL NUM_THREADS(1) PRIVAD(AUIOF,BUIOF)
 !$OMP DO
-        do 656 nx=1, ngridx ! nx_in,nx_fin
+        do 656 nx=1, 2 !ngridx ! nx_in,nx_fin
           write(xstr,'(i3.3)') nx
                    
-         do 656 ny = 1,ngridy  ! ny_in,ny_fin
+         do 656 ny = 1, 2 !ngridy  ! ny_in,ny_fin
             write(ystr,'(i3.3)') ny
 
 C     !PSG: Passing temporal variables to old variables (no time)
             i_time = 0
 
-            DO 646, timeidx = 1, ntime
+            DO 646, timeidx = 1, 1 !ntime
                write(*,*) 'running on thread: ', OMP_GET_THREAD_NUM(),
      $              OMP_GET_MAX_THREADS()
 
@@ -991,7 +983,12 @@ C       write(*,*) 'entra a '//FILE_profile//' com outlevels=',OUTLEVELS   ! PSG
 !$OMP END PARALLEL      
  777  enddo                   ! end over frequency index
 
-    
+      deallocate(temp_tmp, press_tmp, relhum_tmp, mixr_tmp)
+      deallocate(cloud_water_tmp, rain_water_tmp, cloud_ice_tmp)
+      deallocate(snow_tmp, graupel_tmp, windvel_tmp, winddir_tmp)
+      deallocate(qidx)
+      deallocate(TimeStamp)
+          
       STOP
       END        
 C     *********************************************************

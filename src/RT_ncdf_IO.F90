@@ -44,8 +44,28 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   integer, allocatable, dimension(:) :: myVarIDs, dim_len
   
   real(kind=8), allocatable, dimension(:,:,:,:) :: U_Vel, V_Vel, mixratio
+  character(len=15), dimension(18) :: wrfvarname
 
-  
+  ! List of variable names to load (WRF convention)
+  wrfvarname(1) = 'T2'
+  wrfvarname(2) = 'PSFC'
+  wrfvarname(3) = 'Q2'
+  wrfvarname(4) = 'XLAT'
+  wrfvarname(5) = 'XLONG'
+  wrfvarname(6) = 'PHB'
+  wrfvarname(7) = 'P_HYD'
+  wrfvarname(8) = 'T'
+  wrfvarname(9) = 'QVAPOR'
+  wrfvarname(10) = 'QCLOUD'
+  wrfvarname(11) = 'QRAIN'
+  wrfvarname(12) = 'QICE'
+  wrfvarname(13) = 'QSNOW'
+  wrfvarname(14) = 'QGRAUP'
+  wrfvarname(15) = 'V'
+  wrfvarname(16) = 'U'
+  wrfvarname(17) = 'Times'
+  wrfvarname(18) = 'QXI'
+
   ! -----------------------------------------------------------------------------
   ! Open file and read directory
   print*,'WRF netCDF input files is', ncflen, ' : ', trim(ncfile)
@@ -58,9 +78,8 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   status = nf90_inquire(ncid, ndims_in, nvars_in, ngatts_in, unlimdimid_in)
   ! Get ID of unlimited dimension
 
-  allocate(dim_len(ndims_in) )
-  allocate(dim_name(ndims_in) )
-  !! print*,ndims_in, nvars_in, ngatts_in, unlimdimid_in
+  allocate(dim_len(ndims_in), dim_name(ndims_in) )
+
   do i=1, ndims_in
      ! assigning dimension name and length:
      status = nf90_inquire_dimension(ncid,i,dim_name(i), dim_len(i))
@@ -98,8 +117,8 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   allocate( graupel_tmp(ngridx, ngridy, nlyr, ntime) )
   allocate( windvel_tmp(ngridx, ngridy, nlyr, ntime) )
   allocate( winddir_tmp(ngridx, ngridy, nlyr, ntime) )
-  allocate( qidx(ngridx, ngridy, ntime) )
   allocate( lat(ngridx, ngridy),  lon(ngridx, ngridy) )
+  allocate( qidx(ngridx, ngridy, ntime) )
   
   ! For local variables:
   allocate(mixratio(ngridx, ngridy, 0:nlyr, ntime) )
@@ -110,18 +129,16 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   press_tmp = 0.0d0
   temp_tmp = 0.0d0
   relhum_tmp = 0.0d0
+  qidx = 15
 
-  ! loop over all variables present in netCDF file
-  do i=1, nvars_in
-     status = nf90_inquire_variable(ncid, myVarIDs(i), varname, ndims = NN)
-     if(status /= nf90_NoErr) print*, 'ERROR: NetCDF variable name cannot be assigned'
-     status = nf90_inq_varid(ncid, varname, VarId)
-
-     if(status /= nf90_NoErr) print*, 'ERROR: NetCDF variable ID for ',trim(varname),' cannot be retrieved'
-
-     ! Assigning the data to RT3/4 variable names
-     status = nf90_NoErr
-     select case(trim(varname))
+  ! loop over all variables needed from WRF netCDF file
+  do i=1, size(wrfvarname)
+     status = nf90_inq_varid(ncid, trim(wrfvarname(i) ), VarId)
+     if(status /= nf90_NoErr) then
+        print*, 'WARNING: variable ',trim(wrfvarname(i)),' cannot be read: ', nf90_strerror(status)
+        continue
+     end if
+     select case(trim(wrfvarname(i) ))
         ! *** Reading for WRF SURFACE variables:
      case('T2')
         status = nf90_get_var(ncid, VarId, temp_tmp(:, :, 0, :))
@@ -142,7 +159,6 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
         press_tmp = press_tmp*1E-2  ! [hPa]
      case('T')
         status = nf90_get_var(ncid, VarId, temp_tmp(:, :, 1:nlyr, :))
-        call PERTHETA2T(ngridx, ngridy, nlyr, ntime, temp_tmp(:, :, 1:nlyr, :), temp_tmp(:, :, 1:nlyr, :) )
      case('QVAPOR')
         status = nf90_get_var(ncid, VarId, mixratio(:, :, 1:nlyr, :))
      case('QCLOUD')
@@ -161,22 +177,28 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
         status = nf90_get_var(ncid, VarId, U_Vel, start=(/2,1,1,1/) )
      case('Times')
         status = nf90_get_var(ncid, VarId, TimeStamp)
+     case('QXI')
+        status = nf90_get_var(ncid, VarId, qidx)
      case default
-        print*, 'WARNING: WRF variable ', trim(varname),' not being used.'
-        continue
+        print*, 'WARNING: WRF variable ', trim(varname),' not recognized.'
      end select
-     if(status /= nf90_NoErr) print*, 'ERROR: assigning variable ', varname, nf90_strerror(status)
-
   end do
+
 
   ! ---
   ! Variables not present in WRF:
+  ! 1) Converting Perturbation Potential Temperature to Temperature:
+  call PERTHETA2T(ngridx, ngridy, nlyr, ntime, temp_tmp(:, :, 1:nlyr, :),&
+       & press_tmp(:, :, 1:nlyr, :), temp_tmp(:, :, 1:nlyr, :) )
+
+  ! 2) Converting Vapor mixing ratio to Relative Humidity
   call mixr2rh(ngridx, ngridy, 1+nlyr, ntime,&
-       & mixratio, temp_tmp, press_tmp, relhum_tmp)
+       & mixratio, press_tmp, temp_tmp, relhum_tmp)
   mixr_tmp = 1E3*mixratio(:, :, 1:nlyr, :)
+
+  ! 3) Converting Wind U and V components to Windspeed and Direction:
   windvel_tmp(:ngridx, :ngridy, :nlyr, :ntime) = sqrt( U_Vel*U_Vel + V_Vel*V_Vel)
   winddir_tmp(:ngridx, :ngridy, :nlyr, :ntime) = modulo(360.0 - atan2(U_Vel, V_Vel)*PI2deg, 360.0)
-  qidx(:ngridx, :ngridy, :ntime) = 15;
 
   !do k=1,mxgridx
   !   read(TimeStamp(k), '(F4.0X1F2.0X1F2.0X1F2.0)') year(k), month(k), day(k), hour(k)
@@ -1179,23 +1201,20 @@ subroutine mixr2rh(nx, ny, nz, nt, MIXR, P, T, RH)
   real(kind=8), intent(in), dimension(nx,ny,nz,nt) :: MIXR, P, T
   real(kind=8), intent(out), dimension(nx,ny,nz,nt) :: RH
 
-  integer :: i
+  integer :: i, j
   real, dimension(nx,ny,nz,nt) :: PWS, etha, A
   real, parameter :: COEFF = 2.16679 ! [g K J^-1]
   real, parameter :: Tc = 647.096  ! critical temperature [K]
   real, parameter :: Pc = 220640   ! critical pressure [hPa]
   real, parameter :: B  = 0.6219907 ! constant for air [kg/kg]
   real, parameter :: CC(6) = (/ -7.85951783, 1.84408259, &
-       & -11.7866497, 22.6807411, -15.9618719, 1.80122502/)
+       & -11.7866497, 22.6807411, -15.9618719, 1.80122502 /)
   real, parameter :: EE(6) = (/1.0, 1.5, 3.0, 3.5, 4.0, 7.5/)
-  etha = 1-T/Tc
-  A = 0.0
-  print*, 'drinnen MIXR2RH:'
+  etha = 1.0d0 - T/Tc
+  A = 0.0d0
   do i=1, 6
      A = A + CC(i)*(etha**EE(i))
-     print*, i, CC(i), 2.0**EE(i)
   end do
-  print*, (etha(i,1,1,1), i=1,6)
   PWS = Pc*exp(A*Tc/T)
   !RH = 1E-3*MIXR*T/PWS/COEFF
   !RH = 100*PW/PWS
@@ -1204,15 +1223,83 @@ end subroutine mixr2rh
 
 ! -----------------------------------------------------------------
 ! CONVERT perturbation potential temperature (theta-t0)
-! to Temperature. Where thete: Potential Temperature and T0=300K
-subroutine PERTHETA2T(nx, ny, nz, nt, Tper, T)
+! to Temperature.
+!
+! Based on "[Wrf-users] perturbation potential temperature"
+! https://mailman.ucar.edu/pipermail/wrf-users/2010/001896.html
+! Where thete: Potential Temperature and T0=300K
+! kappa: the Poisson constant (kappa = R/c_p), the ratio of the gas
+! constant R to the specific heat at constant pressure c_p.
+
+subroutine PERTHETA2T(nx, ny, nz, nt, Tper, P, T)
   implicit none
   integer, intent(in) :: nx, ny, nz, nt
-  real(kind=8), intent(in), dimension(nx,ny,nz,nt) :: Tper
+  real(kind=8), intent(in), dimension(nx,ny,nz,nt) :: Tper, P
   real(kind=8), intent(inout), dimension(nx,ny,nz,nt) :: T
-  real, parameter :: T0 = 300 ! K
-  real, parameter :: P0 = 1006 ! hPa
-  real, parameter :: kappa = 0.343
 
-  T = Tper + 300
+  real(kind=8), dimension(nx,ny,nz,nt) :: theta
+  real, parameter :: T0 = 300 ! [K]
+  real, parameter :: P0 = 1000 ! standard pressure [hPa]
+  real, parameter :: kappa = 0.2854 !  For dry air
+
+  theta = Tper + 300  ! Potential Temperature [K]
+  T = theta*(P/P0)**kappa
 end subroutine PERTHETA2T
+
+!!$  do i=1, nvars_in
+!!$     status = nf90_inquire_variable(ncid, myVarIDs(i), varname, ndims = NN)
+!!$     if(status /= nf90_NoErr) print*, 'ERROR: NetCDF variable name cannot be assigned'
+!!$     status = nf90_inq_varid(ncid, varname, VarId)
+!!$
+!!$     if(status /= nf90_NoErr) print*, 'ERROR: NetCDF variable ID for ',trim(varname),' cannot be retrieved'
+!!$
+!!$     ! Assigning the data to RT3/4 variable names
+!!$     status = nf90_ebadtype
+!!$     select case(trim(varname))
+!!$        ! *** Reading for WRF SURFACE variables:
+!!$     case('T2')
+!!$        status = nf90_get_var(ncid, VarId, temp_tmp(:, :, 0, :))
+!!$     case('PSFC')
+!!$        status = nf90_get_var(ncid, VarId, press_tmp(:, :, 0, :))
+!!$     case('Q2')
+!!$        status = nf90_get_var(ncid, VarId, mixratio(:, :, 0, :))
+!!$     case('XLAT')
+!!$        status = nf90_get_var(ncid, VarId, lat, start=(/1,1,1/), count=(/ngridx, ngridy, 1/))
+!!$     case('XLONG')
+!!$        status = nf90_get_var(ncid, VarId, lon, start=(/1,1,1/), count=(/ngridx, ngridy, 1/))
+!!$        ! *** Reading for WRF PROFILE variables:
+!!$     case('PHB')
+!!$        status = nf90_get_var(ncid, VarId, hgt_tmp)
+!!$        hgt_tmp = hgt_tmp/9.81
+!!$     case('P_HYD')
+!!$        status = nf90_get_var(ncid, VarId, press_tmp(:, :, 1:nlyr, :))
+!!$        press_tmp = press_tmp*1E-2  ! [hPa]
+!!$     case('T')
+!!$        status = nf90_get_var(ncid, VarId, temp_tmp(:, :, 1:nlyr, :))
+!!$     case('QVAPOR')
+!!$        status = nf90_get_var(ncid, VarId, mixratio(:, :, 1:nlyr, :))
+!!$     case('QCLOUD')
+!!$        status = nf90_get_var(ncid, VarId, cloud_water_tmp)
+!!$     case('QRAIN')
+!!$        status = nf90_get_var(ncid, VarId, rain_water_tmp)
+!!$     case('QICE')
+!!$        status = nf90_get_var(ncid, VarId, cloud_ice_tmp)
+!!$     case('QSNOW')
+!!$        status = nf90_get_var(ncid, VarId, snow_tmp)
+!!$     case('QGRAUP')
+!!$        status = nf90_get_var(ncid, VarId, graupel_tmp)
+!!$     case('V')
+!!$        status = nf90_get_var(ncid, VarId, V_Vel, start=(/1,2,1,1/) )
+!!$     case('U')
+!!$        status = nf90_get_var(ncid, VarId, U_Vel, start=(/2,1,1,1/) )
+!!$     case('Times')
+!!$        status = nf90_get_var(ncid, VarId, TimeStamp)
+!!$     case('QXI')
+!!$        status = nf90_get_var(ncid, VarId, qidx)
+!!$     case default
+!!$        print*, 'WARNING: WRF variable ', trim(varname),' not being used.'
+!!$        continue
+!!$     end select
+!!$     if(status /= nf90_NoErr) print*, 'ERROR: assigning variable ', varname, nf90_strerror(status)
+!!$
+!!$  end do
