@@ -136,7 +136,7 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
      status = nf90_inq_varid(ncid, trim(wrfvarname(i) ), VarId)
      if(status /= nf90_NoErr) then
         print*, 'WARNING: variable ',trim(wrfvarname(i)),' cannot be read: ', nf90_strerror(status)
-        continue
+        cycle
      end if
      select case(trim(wrfvarname(i) ))
         ! *** Reading for WRF SURFACE variables:
@@ -153,7 +153,7 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
         ! *** Reading for WRF PROFILE variables:
      case('PHB')
         status = nf90_get_var(ncid, VarId, hgt_tmp)
-        hgt_tmp = hgt_tmp/9.81
+        hgt_tmp = 1.0E-3*hgt_tmp/9.81  ! [km]
      case('P_HYD')
         status = nf90_get_var(ncid, VarId, press_tmp(:, :, 1:nlyr, :))
         press_tmp = press_tmp*1E-2  ! [hPa]
@@ -179,6 +179,7 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
         status = nf90_get_var(ncid, VarId, TimeStamp)
      case('QXI')
         status = nf90_get_var(ncid, VarId, qidx)
+        print*, 'QXI assigned?!?!?'
      case default
         print*, 'WARNING: WRF variable ', trim(varname),' not recognized.'
      end select
@@ -359,7 +360,7 @@ subroutine read_wyosonde(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
         status = nf90_get_var(ncid, VarId, Var4D)
      case default
         print*,trim(varname),'WARNING: neither 4D nor 3D nor 2D variable!!'
-        continue
+        cycle
      end select
      if(status /= nf90_NoErr) print*, 'error getting variable ', trim(varname)
 
@@ -512,7 +513,7 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
   NANGLES = NUMMU + nelv
 
   status = nf90_create(trim(ncfile),NF90_CLOBBER,ncid)
-  if(status /= nf90_NOERR) stop 'Output NetCDF was not possible to create'
+  if(status /= nf90_NOERR) stop 'Output NetCDF was not possible to create: '//nf90_strerror(status)
 
   ! Defining dimensions
   status = nf90_def_dim(ncid, "theta_z", NANGLES, mu_id) ! NUMMU
@@ -921,7 +922,7 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
 
   end if
   
-  if(time_len.GT.1.AND.i_freq.EQ.freq_len) then
+  if(time_len.EQ.NTIME.AND.i_freq.EQ.freq_len) then
      ! writting Initial date as global variable:
      status = nf90_redef(ncid)
      status = nf90_put_att(ncid,NF90_GLOBAL,"End_Date", date) !OUT_FILE(19:26))  ! (16:23)

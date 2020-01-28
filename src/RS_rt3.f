@@ -257,14 +257,14 @@ C     !PSG: Calling the NetCDF routine to read data
         !   write(*,'(10F9.3)') (temp_tmp(i,j,5,1), j=1,mxgridy)
         !enddo
         !print*, 'press at ground is: ', origin_str
-        !do i=1, ntime
-        !   write(*,'(10F9.3)') (relhum_tmp(i,j,1,1), j=1,mxgridy)
-        !enddo
+        do i=1, ntime
+           write(*,'(10I9)') (qidx(i,j,1), j=1,10) !mxgridy)
+        enddo
 
         OUTLEVELS(1)=1          ! PSG: moved from befor call RT3 to here
         OUTLEVELS(2)=nlyr+1     ! PSG: N_lay_cut+1
 
-
+        
         write(SP_str(1:3),'(f3.1)')SP
 c     write(18,*)'str',H_str
 
@@ -341,8 +341,8 @@ C     !PSG: Passing temporal variables to old variables (no time)
            snow = snow_tmp(:,:,:, timeidx)
            graupel = graupel_tmp(:,:,:, timeidx)
            max_rainwater = maxval(rain_water,DIM=3)
-           
-c
+
+c     
 c     Read the standard ASCII COSMO cloud  model output
 c
 c$$$
@@ -459,15 +459,19 @@ c$$$     $ SD_grau//N0graustr//EM_grau//SD_rain//N0rainstr
           
         
             ! Checking whether the profile passed the qualitity control:
-            if(qidx(nx, ny, timeidx).NE.15) go to 646
+          if(qidx(nx, ny, timeidx).NE.15) go to 646
 
             i_time = i_time + 1
             !write(*,*) 'running on time: ',i_time
-            write(year,'(I2.2)') int(yy(nx,ny, timeidx)-2000)
-            write(month,'(I2.2)') int(mm(nx,ny, timeidx))
-            write(day,'(I2.2)') int(dd(nx,ny, timeidx))
-            write(hour,'(I2.2)') int(hh(nx,ny, timeidx))
-
+            !!write(year,'(I2.2)') int(yy(nx,ny, timeidx)-2000)
+            !!write(month,'(I2.2)') int(mm(nx,ny, timeidx))
+            !!write(day,'(I2.2)') int(dd(nx,ny, timeidx))
+            !!write(hour,'(I2.2)') int(hh(nx,ny, timeidx))
+            year = TimeStamp(timeidx)(3:4)
+            month = TimeStamp(timeidx)(6:7)
+            day = TimeStamp(timeidx)(9:10)
+            hour = TimeStamp(timeidx)(12:13)
+            
             date_str=year//month//day//hour 
 c   computing the refractive index of the sea surface
         Salinity=10.0d0
@@ -960,7 +964,6 @@ C       write(*,*) 'entra a '//FILE_profile//' com outlevels=',OUTLEVELS   ! PSG
      .                    NOUTLEVELS, OUTLEVELS,NUMAZIMUTHS,i_time)
 
    
-
        call MP_storencdf(NCDFOUT,i_time,ifreq,ny,nx,
      $      NLYR,hgt_lev(nx,ny,0:NLYR),
      $      temp_lev(nx,ny,0:NLYR), press_lev(nx,ny,0:NLYR),
