@@ -9,7 +9,9 @@
       real(kind=4) ,allocatable, dimension(:,:) :: lat, lon
       character(len=:), allocatable :: TimeStamp(:)
 
-! Constants:
+!     tests:
+      real(kind=8), allocatable, dimension(:,:,:) :: kakes
+!     Constants:
       real, parameter :: PI = dacos(-1.0d0)
       real, parameter :: PI2deg = 45.0/atan(1.0d0)
       end module variables
@@ -257,9 +259,6 @@ C     !PSG: Calling the NetCDF routine to read data
         !   write(*,'(10F9.3)') (temp_tmp(i,j,5,1), j=1,mxgridy)
         !enddo
         !print*, 'press at ground is: ', origin_str
-        do i=1, ntime
-           write(*,'(10I9)') (qidx(i,j,1), j=1,10) !mxgridy)
-        enddo
 
         OUTLEVELS(1)=1          ! PSG: moved from befor call RT3 to here
         OUTLEVELS(2)=nlyr+1     ! PSG: N_lay_cut+1
@@ -331,7 +330,15 @@ C     !PSG: Passing temporal variables to old variables (no time)
                write(*,*) 'running on thread: ', OMP_GET_THREAD_NUM(),
      $              OMP_GET_MAX_THREADS()
 
-           hgt_lev = hgt_tmp(:,:,:, timeidx)
+!     Tests:
+               allocate(kakes(ngridx, ngridy, 0:nlyr))
+               kakes = temp_tmp(:,:,:,timeidx)
+               print*, shape(kakes)
+               print*, shape(temp_tmp)
+               write(*,'(11F9.2)') (kakes(31,1,k), k=0,10)
+               write(*,'(11F9.2)') (temp_tmp(31,1,k,timeidx), k=0,10)
+               stop
+               hgt_lev = hgt_tmp(:,:,:, timeidx)
            press_lev = press_tmp(:,:,:, timeidx)  ! PSG: i_time)
            temp_lev = temp_tmp(:,:,:, timeidx)
            relhum_lev = relhum_tmp(:,:,:, timeidx)
