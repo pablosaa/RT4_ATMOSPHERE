@@ -1,8 +1,8 @@
       module variables
       integer ngridx, ngridy, nlyr, ntime
       integer(kind=4), allocatable :: qidx(:,:,:)
-      real(kind=8), allocatable, dimension(:,:,:,:) :: hgt_tmp,temp_tmp,
-     $     press_tmp, relhum_tmp,
+      real(kind=8), allocatable, dimension(:,:,:,:) :: hgt_tmp,
+     $     temp_tmp, press_tmp, relhum_tmp,
      $     mixr_tmp, cloud_water_tmp,
      $     rain_water_tmp, cloud_ice_tmp, snow_tmp, graupel_tmp,
      $     winddir_tmp, windvel_tmp
@@ -331,12 +331,13 @@ C     !PSG: Passing temporal variables to old variables (no time)
      $              OMP_GET_MAX_THREADS()
 
 !     Tests:
-               allocate(kakes(ngridx, ngridy, 0:nlyr))
+               allocate(kakes(ngridx, ngridy,0:nlyr))
                kakes = temp_tmp(:,:,:,timeidx)
                print*, shape(kakes)
                print*, shape(temp_tmp)
                write(*,'(11F9.2)') (kakes(31,1,k), k=0,10)
                write(*,'(11F9.2)') (temp_tmp(31,1,k,timeidx), k=0,10)
+               
                stop
                hgt_lev = hgt_tmp(:,:,:, timeidx)
            press_lev = press_tmp(:,:,:, timeidx)  ! PSG: i_time)
@@ -425,7 +426,7 @@ c       by this code or another code.
 c
 
           LAM=299.7925/freq(ifreq) !mm  :PSG
-          WAVELENGTH = LAM*1E3    !micrometre  :PSG
+          WAVELENGTH = LAM*1E3    !micrometer  :PSG
           alpha=0.0d0
           gamma=1.0d0 ! always exponential SD 
           
