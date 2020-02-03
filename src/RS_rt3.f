@@ -9,8 +9,23 @@
       real(kind=4) ,allocatable, dimension(:,:) :: lat, lon
       character(len=:), allocatable :: TimeStamp(:)
 
-!     tests:
-      real(kind=8), allocatable, dimension(:,:,:) :: kakes
+! PSG: following block adapted for allocatable variables:
+      real(kind=8), allocatable, dimension(:,:,:) :: hgt_lev,
+     $     press_lev, temp_lev, relhum_lev, cloud_water,
+     $     rain_water, cloud_ice, snow, graupel,
+     $     avg_pressure, vapor_pressure, rho_vap
+      real(kind=8), allocatable, dimension(:,:) :: tskin, ics,
+     &     srfrain, max_rainwater
+      real(kind=8), allocatable, dimension(:,:,:) :: kexttot,
+     &     g_coeff, kextcloud, kextrain, kextice, kextgraupel
+      
+      real(kind=8), allocatable, dimension(:,:,:) :: back,
+     &     kextsnow, salbtot, absorb, asymtot
+
+      real(kind=8), allocatable, dimension(:,:) :: tau, tau_hydro
+      real(kind=8), allocatable, dimension(:) :: LYR_TEMP, LYR_PRES,
+     &     REL_HUM, KEXTATMO, AVGPRESSURE, VAPORPRESSURE
+      
 !     Constants:
       real, parameter :: PI = dacos(-1.0d0)
       real, parameter :: PI2deg = 45.0/atan(1.0d0)
@@ -78,55 +93,62 @@ C                    **  RADTRAN I/O SPECIFICATIONS  **
       COMPLEX*16    MINDEX,Im,m_air,m_MG,m_ice
 
       
-      real*8       deltaxy(2),Tavg,ABSIND,ABSCOF  ! PSG: deltax, deltay -> deltaxy(2)
-      real*8       tskin(mxgridx,mxgridy)
-      integer    ics(mxgridx,mxgridy)
-      real*8       sfcrain(mxgridx,mxgridy)
-      real*8       hgt_lev(mxgridx,mxgridy,0:mxlyr)
-      real*8       press_lev(mxgridx,mxgridy,0:mxlyr)
-      real*8       temp_lev(mxgridx,mxgridy,0:mxlyr)
-      real*8       relhum_lev(mxgridx,mxgridy,0:mxlyr)  
-c      real*8       relhum(mxgridx,mxgridy,mxlyr)
-
-      real*8       cloud_water(mxgridx,mxgridy,mxlyr)
-      real*8       rain_water(mxgridx,mxgridy,mxlyr)
-      real*8       max_rainwater(mxgridx,mxgridy)
-      real*8       cloud_ice(mxgridx,mxgridy,mxlyr)
-      real*8       snow(mxgridx,mxgridy,mxlyr)
-      real*8       graupel(mxgridx,mxgridy,mxlyr)
-  
-      real*8       cloud_water_lev(mxgridx,mxgridy,0:mxlyr)
-      real*8       rain_water_lev(mxgridx,mxgridy,0:mxlyr)
-      real*8       cloud_ice_lev(mxgridx,mxgridy,0:mxlyr)
-      real*8       snow_lev(mxgridx,mxgridy,0:mxlyr)
-      real*8       graupel_lev(mxgridx,mxgridy,0:mxlyr)
+      real*8       deltaxy(2),Tavg,ABSIND,ABSCOF ! PSG: deltax, deltay -> deltaxy(2)
+   
+c$$$      
+c$$$      real*8       tskin(mxgridx,mxgridy)
+c$$$      integer    ics(mxgridx,mxgridy)
+c$$$      real*8       sfcrain(mxgridx,mxgridy)
+c$$$      real*8       hgt_lev(mxgridx,mxgridy,0:mxlyr)
+c$$$      real*8       press_lev(mxgridx,mxgridy,0:mxlyr)
+c$$$      real*8       temp_lev(mxgridx,mxgridy,0:mxlyr)
+c$$$      real*8       relhum_lev(mxgridx,mxgridy,0:mxlyr)  
+c$$$c      real*8       relhum(mxgridx,mxgridy,mxlyr)
+c$$$
+c$$$      real*8       cloud_water(mxgridx,mxgridy,mxlyr)
+c$$$      real*8       rain_water(mxgridx,mxgridy,mxlyr)
+c$$$      real*8       max_rainwater(mxgridx,mxgridy)
+c$$$      real*8       cloud_ice(mxgridx,mxgridy,mxlyr)
+c$$$      real*8       snow(mxgridx,mxgridy,mxlyr)
+c$$$      real*8       graupel(mxgridx,mxgridy,mxlyr)
+c$$$!     PSG: end of block adpated for allocatable variables.
+      
+      ! PSG: following 5 parameter *_lev are not being used.
+c$$$      real*8       cloud_water_lev(mxgridx,mxgridy,0:mxlyr)
+c$$$      real*8       rain_water_lev(mxgridx,mxgridy,0:mxlyr)
+c$$$      real*8       cloud_ice_lev(mxgridx,mxgridy,0:mxlyr)
+c$$$      real*8       snow_lev(mxgridx,mxgridy,0:mxlyr)
+c$$$      real*8       graupel_lev(mxgridx,mxgridy,0:mxlyr)
     
-      real*8        LYR_TEMP(0:MXLYR), LYR_PRES(0:MXLYR),
-     $REL_HUM(MXLYR),KEXTATMO(MXLYR),AVGPRESSURE(MXLYR),
-     $ VAPORPRESSURE(MXLYR),P11(2),ang(2)
-
+c$$$      real*8        LYR_TEMP(0:MXLYR), LYR_PRES(0:MXLYR),
+c$$$     $     REL_HUM(MXLYR),KEXTATMO(MXLYR),AVGPRESSURE(MXLYR),
+c$$$  $     VAPORPRESSURE(MXLYR),P11(2),ang(2)
+      
+      real*8 P11(2), ang(2)     ! PSG: since other var are allocatable now
 
       real*8       atm_ext, kextcw, salbcw, asymcw, kextrr, salbrr,
      $           asymrr, kextci, salbci, asymci, kextsn, salbsn, 
      $           asymsn, kextgr, salbgr, asymgr, salbhl,
      $           asymhl,   backcw, backrr, 
      $          backci, backsn, backgr,tau_min,tau_max
-      real*8       avg_pressure(mxgridx,mxgridy,mxlyr),
-     $           vapor_pressure(mxgridx,mxgridy,mxlyr),
-     $         rho_vap(mxgridx,mxgridy,mxlyr)
-      real*8       kexttot(mxgridx,mxgridy,mxlyr),   
-     $ g_coeff(mxgridx,mxgridy,mxlyr),
-     $ kextcloud(mxgridx,mxgridy,mxlyr),
-     $ kextrain(mxgridx,mxgridy,mxlyr),  
-     $ kextice(mxgridx,mxgridy,mxlyr),   
-     $ kextgraupel(mxgridx,mxgridy,mxlyr),   
-     $ kextsnow(mxgridx,mxgridy,mxlyr),
-     $  salbtot(mxgridx,mxgridy,mxlyr), 
-     $  tau(mxgridx,mxgridy), tau_hydro(mxgridx,mxgridy),
-     $  abs(mxgridx,mxgridy,mxlyr),
-     $           asymtot(mxgridx,mxgridy,mxlyr),
-     $              back(mxgridx,mxgridy,mxlyr),
-     $mu,D_0,D_max,D_min,A1,A2
+
+c$$$          real*8       avg_pressure(mxgridx,mxgridy,mxlyr),
+c$$$     $           vapor_pressure(mxgridx,mxgridy,mxlyr),
+c$$$     $         rho_vap(mxgridx,mxgridy,mxlyr)
+c$$$      real*8       kexttot(mxgridx,mxgridy,mxlyr),   
+c$$$     $ g_coeff(mxgridx,mxgridy,mxlyr),
+c$$$     $ kextcloud(mxgridx,mxgridy,mxlyr),
+c$$$     $ kextrain(mxgridx,mxgridy,mxlyr),  
+c$$$     $ kextice(mxgridx,mxgridy,mxlyr),   
+c$$$     $ kextgraupel(mxgridx,mxgridy,mxlyr),   
+c$$$     $ kextsnow(mxgridx,mxgridy,mxlyr),
+c$$$     $  salbtot(mxgridx,mxgridy,mxlyr), 
+c$$$     $  tau(mxgridx,mxgridy), tau_hydro(mxgridx,mxgridy),
+c$$$     $  absorb(mxgridx,mxgridy,mxlyr),
+c$$$     $           asymtot(mxgridx,mxgridy,mxlyr),
+c$$$     $              back(mxgridx,mxgridy,mxlyr),
+
+      real mu,D_0,D_max,D_min,A1,A2
       integer j_temp,ind_temp,N_lay_cut
  
       INTEGER  MAXV,MAXA,MAXLAY !,NUMMU,ntheta_i,ntheta_s
@@ -317,11 +339,40 @@ c     write(*,29) frq_str
            call omp_set_num_threads(4)
 !$OMP PARALLEL NUM_THREADS(1) PRIVAD(AUIOF,BUIOF)
 !$OMP DO
-        do 656 nx=1, 2 !ngridx ! nx_in,nx_fin
-          write(xstr,'(i3.3)') nx
+
+           allocate(LYR_TEMP(0:nlyr), LYR_PRES(0:nlyr),
+     $          REL_HUM(nlyr), KEXTATMO(nlyr),
+     $          AVGPRESSURE(nlyr), VAPORPRESSURE(nlyr) )
+           allocate(avg_pressure(ngridx,ngridy,nlyr))
+           allocate(vapor_pressure(ngridx,ngridy,nlyr))
+           allocate(rho_vap(ngridx,ngridy,nlyr))
+
+           allocate(kexttot(ngridx,ngridy,nlyr))
+           allocate(g_coeff(ngridx,ngridy,nlyr))
+           allocate(kextcloud(ngridx,ngridy,nlyr))
+           allocate(kextrain(ngridx,ngridy,nlyr))
+           allocate(kextice(ngridx,ngridy,nlyr))
+           allocate(kextgraupel(ngridx,ngridy,nlyr))
+           allocate(kextsnow(ngridx,ngridy,nlyr))
+           allocate(salbtot(ngridx,ngridy,nlyr))
+           allocate(tau(ngridx,ngridy) )
+           allocate(tau_hydro(ngridx,ngridy) )
+           allocate(absorb(ngridx,ngridy,nlyr))
+           allocate(asymtot(ngridx,ngridy,nlyr))
+           allocate(back(ngridx,ngridy,nlyr))
+           
+           allocate(hgt_lev(ngridx,ngridy,0:nlyr))
+           allocate(press_lev(ngridx,ngridy,0:nlyr))
+           allocate(temp_lev(ngridx,ngridy,0:nlyr))
+           allocate(relhum_lev(ngridx,ngridy,0:nlyr))
+
+           
+           
+           do 656 nx=1, 2       !ngridx ! nx_in,nx_fin
+              write(xstr,'(i3.3)') nx
                    
-         do 656 ny = 1, 2 !ngridy  ! ny_in,ny_fin
-            write(ystr,'(i3.3)') ny
+              do 656 ny = 1, 2  !ngridy  ! ny_in,ny_fin
+                 write(ystr,'(i3.3)') ny
 
 C     !PSG: Passing temporal variables to old variables (no time)
             i_time = 0
@@ -330,25 +381,16 @@ C     !PSG: Passing temporal variables to old variables (no time)
                write(*,*) 'running on thread: ', OMP_GET_THREAD_NUM(),
      $              OMP_GET_MAX_THREADS()
 
-!     Tests:
-               allocate(kakes(ngridx, ngridy,0:nlyr))
-               kakes = temp_tmp(:,:,:,timeidx)
-               print*, shape(kakes)
-               print*, shape(temp_tmp)
-               write(*,'(11F9.2)') (kakes(31,1,k), k=0,10)
-               write(*,'(11F9.2)') (temp_tmp(31,1,k,timeidx), k=0,10)
-               
-               stop
                hgt_lev = hgt_tmp(:,:,:, timeidx)
-           press_lev = press_tmp(:,:,:, timeidx)  ! PSG: i_time)
-           temp_lev = temp_tmp(:,:,:, timeidx)
-           relhum_lev = relhum_tmp(:,:,:, timeidx)
-           cloud_water = cloud_water_tmp(:,:,:, timeidx)
-           rain_water = rain_water_tmp(:,:,:, timeidx)
-           cloud_ice = cloud_ice_tmp(:,:,:, timeidx)
-           snow = snow_tmp(:,:,:, timeidx)
-           graupel = graupel_tmp(:,:,:, timeidx)
-           max_rainwater = maxval(rain_water,DIM=3)
+               press_lev = press_tmp(:,:,:, timeidx)
+               temp_lev = temp_tmp(:,:,:, timeidx)
+               relhum_lev = relhum_tmp(:,:,:, timeidx)
+               cloud_water = cloud_water_tmp(:,:,:, timeidx)
+               rain_water = rain_water_tmp(:,:,:, timeidx)
+               cloud_ice = cloud_ice_tmp(:,:,:, timeidx)
+               snow = snow_tmp(:,:,:, timeidx)
+               graupel = graupel_tmp(:,:,:, timeidx)
+               max_rainwater = maxval(rain_water,DIM=3)
 
 c     
 c     Read the standard ASCII COSMO cloud  model output
@@ -820,7 +862,7 @@ C
      $         asymsn*salbsn*kextsn + asymgr*salbgr*kextgr)/
      $         (salbtot(nx,ny,nz)*kexttot(nx,ny,nz))
               endif
-        abs(nx,ny,nz)= (1.0-salbtot(nx,ny,nz))*kexttot(nx,ny,nz)
+        absorb(nx,ny,nz)= (1.0-salbtot(nx,ny,nz))*kexttot(nx,ny,nz)
  
         tau(nx,ny)=tau(nx,ny)+(kexttot(nx,ny,nz)+
      $ KEXTATMO(nz))*(hgt_lev(nx,ny,nz)-hgt_lev(nx,ny,nz-1))
