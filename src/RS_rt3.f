@@ -193,8 +193,8 @@ C     !PSG: Following temporal varaibles is to include NetCDF time depending
        !real*8 winddir_tmp(mxgridx,mxgridy,mxlyr,mxtime)
        !real*8 windvel_tmp(mxgridx,mxgridy,mxlyr,mxtime)
        !integer*4 qidx(mxgridx,mxgridy,mxtime)
-       real*4 yy(mxgridx,mxgridy,mxtime), mm(mxgridx,mxgridy,mxtime)
-       real*4 dd(mxgridx,mxgridy,mxtime), hh(mxgridx,mxgridy,mxtime)
+       !real*4 yy(mxgridx,mxgridy,mxtime), mm(mxgridx,mxgridy,mxtime)
+       !real*4 dd(mxgridx,mxgridy,mxtime), hh(mxgridx,mxgridy,mxtime)
        !real*4 lat(mxgridx,mxgridy),lon(mxgridx,mxgridy)
 
        namelist/inputparam/input_file, nx_in,nx_fin,ny_in,ny_fin,n_freq,
@@ -273,8 +273,17 @@ C     !PSG: Calling the NetCDF routine to read data
         call read_wrf(len_trim(input_file), input_file,
      $       deltaxy, origin_str)
 
-        !print*, 'mysu= ', ngridx, ngridy, nlyr, ntime
-
+        ! PSG: Checking if customized grid size has been given in 'input'
+        if(nx_in.EQ.0) nx_in = 1
+        if(nx_fin.EQ.0) nx_fin = ngridx
+        if(ny_in.EQ.0) ny_in = 1
+        if(ny_fin.EQ.0) ny_fin = ngridy
+        if(n_freq.LT.1.OR.n_freq.GT.20) then
+           write(*,*) 'Input variable n_freq out of bounds!'
+           write(*,*) 'n_freq needs to be >1 and max 20'
+           stop 'Wrong variable in input parameter file'
+        end if
+        
         !do i=1, ntime
         !   write(*,'(10F9.3)') (cloud_ice_tmp(i,j,5,1), j=1,mxgridy)
         !   print*, TimeStamp(i)
@@ -312,17 +321,49 @@ c     write(18,*)'str',H_str
 C     NetCDF output file definition (creating one Ncdf file per frequency):
         j_temp = scan(input_file,"/",back=.true.)+1
         
-        NCDFOUT='../output/TB/RT3TB_'//trim(input_file(j_temp:)) !micro_str//'_'
-
+        NCDFOUT='../output/TB/RT3TB_'//
+     $       'X'//xstr1//'-'//xstr2//'Y'//ystr1//'-'//'ystr2_'//                   !micro_str//'_'
+     $       trim(input_file(j_temp:))
+        
         write(*,*) 'Creating NetCDF '//trim(NCDFOUT)
         write(*,*) 'ntime=',ntime,'; nlayer=',nlyr,'; nfreq=',n_freq
 
-        call createncdf(len_trim(NCDFOUT),trim(NCDFOUT),
-     $       NUMMU,n_freq,NSTOKES,nlyr,
-     $       ngridx,ngridy,hgt_tmp(1,1,1:nlyr,1),
-     $       FREQ(1:n_freq),input_file,micro_str,
-     $       real(hgt_tmp(:ngridx,:ngridy,0,1),4),
-     $       lat,lon,trim(origin_str))
+        NXtot = nx_fin - nx_in + 1
+        NYtot = ny_fin - ny_in + 1
+        call createncdf(len_trim(NCDFOUT), trim(NCDFOUT),
+     $       NUMMU, n_freq, NSTOKES, nlyr,
+     $       NXtot, NYtot, hgt_tmp(nx_in,ny_in,1:nlyr,1),
+     $       FREQ(1:n_freq), input_file, micro_str,
+     $       real(hgt_tmp(nx_in:nx_fin, ny_in:ny_fin,0,1),4),
+     $       lat(nx_in:nx_fin, ny_in:ny_fin),
+     $       lon(nx_in:nx_fin, ny_in:ny_fin), trim(origin_str) )
+
+        allocate(LYR_TEMP(0:nlyr), LYR_PRES(0:nlyr),
+     $       REL_HUM(nlyr), KEXTATMO(nlyr),
+     $       AVGPRESSURE(nlyr), VAPORPRESSURE(nlyr) )
+        allocate(avg_pressure(ngridx,ngridy,nlyr))
+        allocate(vapor_pressure(ngridx,ngridy,nlyr))
+        allocate(rho_vap(ngridx,ngridy,nlyr))
+        
+        allocate(kexttot(ngridx,ngridy,nlyr))
+        allocate(g_coeff(ngridx,ngridy,nlyr))
+        allocate(kextcloud(ngridx,ngridy,nlyr))
+        allocate(kextrain(ngridx,ngridy,nlyr))
+        allocate(kextice(ngridx,ngridy,nlyr))
+        allocate(kextgraupel(ngridx,ngridy,nlyr))
+        allocate(kextsnow(ngridx,ngridy,nlyr))
+        allocate(salbtot(ngridx,ngridy,nlyr))
+        allocate(tau(ngridx,ngridy) )
+        allocate(tau_hydro(ngridx,ngridy) )
+        allocate(absorb(ngridx,ngridy,nlyr))
+        allocate(asymtot(ngridx,ngridy,nlyr))
+        allocate(back(ngridx,ngridy,nlyr))
+        
+        allocate(hgt_lev(ngridx,ngridy,0:nlyr))
+        allocate(press_lev(ngridx,ngridy,0:nlyr))
+        allocate(temp_lev(ngridx,ngridy,0:nlyr))
+        allocate(relhum_lev(ngridx,ngridy,0:nlyr))
+
 
 C     !PSG: -- end of NetCDF reading routine
         do 777 ifreq=1,n_freq   ! PSG: include Frequency loop
@@ -339,39 +380,12 @@ c     write(*,29) frq_str
            call omp_set_num_threads(4)
 !$OMP PARALLEL NUM_THREADS(1) PRIVAD(AUIOF,BUIOF)
 !$OMP DO
-
-           allocate(LYR_TEMP(0:nlyr), LYR_PRES(0:nlyr),
-     $          REL_HUM(nlyr), KEXTATMO(nlyr),
-     $          AVGPRESSURE(nlyr), VAPORPRESSURE(nlyr) )
-           allocate(avg_pressure(ngridx,ngridy,nlyr))
-           allocate(vapor_pressure(ngridx,ngridy,nlyr))
-           allocate(rho_vap(ngridx,ngridy,nlyr))
-
-           allocate(kexttot(ngridx,ngridy,nlyr))
-           allocate(g_coeff(ngridx,ngridy,nlyr))
-           allocate(kextcloud(ngridx,ngridy,nlyr))
-           allocate(kextrain(ngridx,ngridy,nlyr))
-           allocate(kextice(ngridx,ngridy,nlyr))
-           allocate(kextgraupel(ngridx,ngridy,nlyr))
-           allocate(kextsnow(ngridx,ngridy,nlyr))
-           allocate(salbtot(ngridx,ngridy,nlyr))
-           allocate(tau(ngridx,ngridy) )
-           allocate(tau_hydro(ngridx,ngridy) )
-           allocate(absorb(ngridx,ngridy,nlyr))
-           allocate(asymtot(ngridx,ngridy,nlyr))
-           allocate(back(ngridx,ngridy,nlyr))
-           
-           allocate(hgt_lev(ngridx,ngridy,0:nlyr))
-           allocate(press_lev(ngridx,ngridy,0:nlyr))
-           allocate(temp_lev(ngridx,ngridy,0:nlyr))
-           allocate(relhum_lev(ngridx,ngridy,0:nlyr))
-
            
            
-           do 656 nx=1, 2       !ngridx ! nx_in,nx_fin
+           do 656 nx = nx_in, nx_fin ! 1, ngridx
               write(xstr,'(i3.3)') nx
                    
-              do 656 ny = 1, 2  !ngridy  ! ny_in,ny_fin
+              do 656 ny = ny_in, ny_fin  ! 1, ngridy
                  write(ystr,'(i3.3)') ny
 
 C     !PSG: Passing temporal variables to old variables (no time)
@@ -1013,8 +1027,10 @@ C       write(*,*) 'entra a '//FILE_profile//' com outlevels=',OUTLEVELS   ! PSG
      .                    SKY_TEMP, WAVELENGTH, UNITS, OUTPOL,
      .                    NOUTLEVELS, OUTLEVELS,NUMAZIMUTHS,i_time)
 
-   
-       call MP_storencdf(NCDFOUT,i_time,ifreq,ny,nx,
+
+       ny_idx = ny - ny_in + 1
+       nx_idx = nx - nx_in + 1
+       call MP_storencdf(NCDFOUT,i_time,ifreq,ny_idx,nx_idx,
      $      NLYR,hgt_lev(nx,ny,0:NLYR),
      $      temp_lev(nx,ny,0:NLYR), press_lev(nx,ny,0:NLYR),
      $      relhum_lev(nx,ny,1:NLYR), rho_vap(nx,ny,:),
@@ -1058,18 +1074,19 @@ C     -------------------------------------------------------
 c     Calculate average air pressure and vapor pressure in specified
 c     layers, given the temperature, pressure, and relative humidity 
 c     from cloud-resolving model output.
-
+c     ! PSG: for input variables, dims have changed from mxgridx, mxgridy, mxlyr
+c     to ngridx, ngridy, nlyr
 C+-------+---------+---------+---------+---------+---------+---------+-+
 C+----------------------------------------------------------------------
 
       include    'parameters.inc'
 c      real*8       hgt_lev(0:mxlyr)
-      real*8       press_lev(mxgridx,mxgridy,0:mxlyr)
-      real*8       temp_lev(mxgridx,mxgridy,0:mxlyr)
-      real*8       relhum(mxgridx,mxgridy,mxlyr)
-      real*8       avg_pressure(mxgridx,mxgridy,mxlyr)
-      real*8       vapor_pressure(mxgridx,mxgridy,mxlyr)
-      real*8      rho_vap(mxgridx,mxgridy,mxlyr)
+      real*8       press_lev(ngridx,ngridy,0:nlyr)
+      real*8       temp_lev(ngridx,ngridy,0:nlyr)
+      real*8       relhum(ngridx,ngridy,nlyr)
+      real*8       avg_pressure(ngridx,ngridy,nlyr)
+      real*8       vapor_pressure(ngridx,ngridy,nlyr)
+      real*8      rho_vap(ngridx,ngridy,nlyr)
 
       real*8       tavg
       real*8       esatvap

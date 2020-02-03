@@ -513,7 +513,7 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
   NANGLES = NUMMU + nelv
 
   status = nf90_create(trim(ncfile),NF90_CLOBBER,ncid)
-  if(status /= nf90_NOERR) stop 'Output NetCDF was not possible to create: '//nf90_strerror(status)
+  if(status /= nf90_NOERR) stop 'Output NetCDF not possible to create: '  !//nf90_strerror(status) 
 
   ! Defining dimensions
   status = nf90_def_dim(ncid, "theta_z", NANGLES, mu_id) ! NUMMU
@@ -826,7 +826,7 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   real(kind=c_double) :: TIMELINE
   integer(kind=c_int) :: date(6)
   real(kind=8), parameter :: PI = 4.0*atan(1.0)
-  integer :: nelv, NANG
+  integer :: nelv, NANG, NXtot, NYtot
   
   namelist/mwrobsang/nelv,elevations
   
@@ -843,7 +843,12 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   if(idx.eq.1) stop 'no x000_ found in string passed'
 
   read(OUT_FILE(idx:),'(I03XI03)') x_grid, y_grid
+  
+  idx = scan(OUT_FILE,'X',back=.true.)+1
+  if(idx.eq.1) stop 'no x000_ found in string passed'
 
+  read(OUT_FILE(idx:),'(I03XI03)') x_ini, x_end, y_ini, y_end
+  
   ! * Date and * getting microphysics from OUT_FILE:
   date = 0
   idx = scan(OUT_FILE,'=',back=.true.)+1
@@ -869,6 +874,14 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   !!!status = nf90_get_var(ncid,unlimdimid,TIMELINE)
   !!!time_len = minloc(TIMELINE,MASK=TIMELINE.LT.0)
 
+  status = nf90_inq_varid(ncid, "xn", VarId)
+  status = nf90_get_var(ncid, VarId, NXtot)
+  status = nf90_inq_varid(ncid, "yn", VarId)
+  status = nf90_get_var(ncid, VarId, NYtot)
+
+  x_grid = NXtot - xgrid - 1
+  x_grid = xgrid - NXtot + 1
+  
   ! For frequency
   ! * Frequency from OUT_FILE:
   idx = scan(OUT_FILE,'f',back=.true.)+1
