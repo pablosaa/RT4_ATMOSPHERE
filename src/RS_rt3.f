@@ -17,15 +17,18 @@
       real(kind=8), allocatable, dimension(:,:) :: tskin, ics,
      &     srfrain, max_rainwater
       real(kind=8), allocatable, dimension(:,:,:) :: kexttot,
-     &     g_coeff, kextcloud, kextrain, kextice, kextgraupel
+     &     kextcloud, kextrain, kextice, kextsnow, kextgraupel
       
       real(kind=8), allocatable, dimension(:,:,:) :: back,
-     &     kextsnow, salbtot, absorb, asymtot
+     &     g_coeff, salbtot, absorb, asymtot
 
       real(kind=8), allocatable, dimension(:,:) :: tau, tau_hydro
       real(kind=8), allocatable, dimension(:) :: LYR_TEMP, LYR_PRES,
      &     REL_HUM, KEXTATMO, AVGPRESSURE, VAPORPRESSURE
-      
+
+!     Indexes:
+      integer :: nx_in, nx_fin, ny_in, ny_fin, nx, ny
+      integer :: n_freq, ifreq, timeidx, i_time ! PSG: new block... , ntime      
 !     Constants:
       real, parameter :: PI = dacos(-1.0d0)
       real, parameter :: PI2deg = 45.0/atan(1.0d0)
@@ -57,9 +60,9 @@ C                    **  RADTRAN I/O SPECIFICATIONS  **
       implicit none
       include "omp_lib.h"    ! PSG: including OpenMP library
       include    'parameters.inc'
-      integer i,j,k,isamp,jj,jsamp,nf,nx,ny,nz,
+      integer i,j,k,isamp,jj,jsamp,nf,nz, ! PSG: nx, ny out to the module
      $n_verify_input,nlev, !,ngridx,ngridy,nlyr
-     $nx_in,nx_fin,ny_in,ny_fin,offset1,offset2,length1,length2
+     $offset1,offset2,length1,length2 ! PSG: nx_in,nx_fin,ny_in,ny_fin,
       character Nzstr*3,xstr*3,ystr*3,   ! PSG: Nzstr*2
      $ xstr1*3,ystr1*3,xstr2*3,ystr2*3,
      $ frq_str*5,theta_str*3 ,H_str*3,surf_type*10
@@ -178,7 +181,6 @@ c$$$     $              back(mxgridx,mxgridy,mxlyr),
      $H_top,DH_top_intersect,K_extbot,K_exttop,T_bot,T_top
  
 C     !PSG: Following temporal varaibles is to include NetCDF time depending
-       integer n_freq, ifreq, timeidx, i_time    ! PSG: new block... , ntime
        character frq_idx*5
        !real*8 hgt_tmp(mxgridx,mxgridy,0:mxlyr,mxtime)
        !real*8 press_tmp(mxgridx,mxgridy,0:mxlyr,mxtime)
@@ -202,7 +204,8 @@ C     !PSG: Following temporal varaibles is to include NetCDF time depending
      $      GAS_EXTINCTION, SD_snow, N_0snowDsnow,EM_snow,SP,SD_grau,
      $      N_0grauDgrau, EM_grau,SD_rain, N_0rainD
        integer istatus
-
+       integer NXtot, NYtot, nx_idx, ny_idx
+       
 C     !PSG: -- end of definition for NetCDF temporal variables
 
       LOGICAL     PHASEFLAG
@@ -321,15 +324,19 @@ c     write(18,*)'str',H_str
 C     NetCDF output file definition (creating one Ncdf file per frequency):
         j_temp = scan(input_file,"/",back=.true.)+1
         
+        write(xstr1,'(i3.3)') nx_in 
+        write(xstr2,'(i3.3)') nx_fin
+        write(ystr1,'(i3.3)') ny_in
+        write(ystr2,'(i3.3)') ny_fin
         NCDFOUT='../output/TB/RT3TB_'//
-     $       'X'//xstr1//'-'//xstr2//'Y'//ystr1//'-'//'ystr2_'//                   !micro_str//'_'
+     $       'X'//xstr1//'-'//xstr2//'Y'//ystr1//'-'//ystr2//'_'//     !micro_str//'_'
      $       trim(input_file(j_temp:))
         
         write(*,*) 'Creating NetCDF '//trim(NCDFOUT)
         write(*,*) 'ntime=',ntime,'; nlayer=',nlyr,'; nfreq=',n_freq
 
-        NXtot = nx_fin - nx_in + 1
-        NYtot = ny_fin - ny_in + 1
+        NXtot = nx_fin - nx_in + 1 ! PSG: temporal solution
+        NYtot = ny_fin - ny_in + 1 ! PSG: temporal solution
         call createncdf(len_trim(NCDFOUT), trim(NCDFOUT),
      $       NUMMU, n_freq, NSTOKES, nlyr,
      $       NXtot, NYtot, hgt_tmp(nx_in,ny_in,1:nlyr,1),
@@ -486,10 +493,10 @@ c
           alpha=0.0d0
           gamma=1.0d0 ! always exponential SD 
           
-          write(xstr1,'(i3.3)') nx_in 
-          write(xstr2,'(i3.3)') nx_fin
-          write(ystr1,'(i3.3)') ny_in
-          write(ystr2,'(i3.3)') ny_fin
+c$$$          write(xstr1,'(i3.3)') nx_in 
+c$$$          write(xstr2,'(i3.3)') nx_fin
+c$$$          write(ystr1,'(i3.3)') ny_in
+c$$$          write(ystr2,'(i3.3)') ny_fin
 c            if (day.le.9) then
 c          write(daystr,'(i1)') day
 c          daystr='0'//daystr
@@ -1028,8 +1035,8 @@ C       write(*,*) 'entra a '//FILE_profile//' com outlevels=',OUTLEVELS   ! PSG
      .                    NOUTLEVELS, OUTLEVELS,NUMAZIMUTHS,i_time)
 
 
-       ny_idx = ny - ny_in + 1
-       nx_idx = nx - nx_in + 1
+       ny_idx = ny - ny_in + 1  ! PSG: temporal solution
+       nx_idx = nx - nx_in + 1  ! PSG: temporal solution
        call MP_storencdf(NCDFOUT,i_time,ifreq,ny_idx,nx_idx,
      $      NLYR,hgt_lev(nx,ny,0:NLYR),
      $      temp_lev(nx,ny,0:NLYR), press_lev(nx,ny,0:NLYR),
@@ -1037,8 +1044,8 @@ C       write(*,*) 'entra a '//FILE_profile//' com outlevels=',OUTLEVELS   ! PSG
      $      cloud_water(nx,ny,:),
      $      winddir_tmp(nx,ny,:NLYR,timeidx),
      $      windvel_tmp(nx,ny,:NLYR,timeidx),
-     $      kextcloud(nx,ny,:), KEXTATMO,kexttot(nx,ny,:),
-     $      salbtot(nx,ny,:), back(nx,ny,:), g_coeff(nx,ny,:))
+     $      kextcloud(nx,ny,:), KEXTATMO, kexttot(nx,ny,:),
+     $      salbtot(nx,ny,:), back(nx,ny,:), g_coeff(nx,ny,:) )
 
             close(28)
 

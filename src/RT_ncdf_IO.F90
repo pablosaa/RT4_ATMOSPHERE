@@ -795,6 +795,7 @@ end subroutine createncdf
 ! ----------------------------------------------------------------------------
 subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,time_len)
   use netcdf
+  use variables, only : nx_in, nx_fin, ny_in, ny_fin, timeidx, nx, ny
   use, intrinsic :: iso_c_binding
   
   implicit none
@@ -826,7 +827,7 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   real(kind=c_double) :: TIMELINE
   integer(kind=c_int) :: date(6)
   real(kind=8), parameter :: PI = 4.0*atan(1.0)
-  integer :: nelv, NANG, NXtot, NYtot
+  integer :: nelv, NANG
   
   namelist/mwrobsang/nelv,elevations
   
@@ -843,11 +844,10 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   if(idx.eq.1) stop 'no x000_ found in string passed'
 
   read(OUT_FILE(idx:),'(I03XI03)') x_grid, y_grid
-  
-  idx = scan(OUT_FILE,'X',back=.true.)+1
-  if(idx.eq.1) stop 'no x000_ found in string passed'
 
-  read(OUT_FILE(idx:),'(I03XI03)') x_ini, x_end, y_ini, y_end
+  if(x_grid.NE.nx.OR.y_grid.NE.ny) stop 'ERROR passing x_grid or y_grid in storecdf'
+  x_grid = nx - nx_in + 1
+  y_grid = ny - ny_in + 1
   
   ! * Date and * getting microphysics from OUT_FILE:
   date = 0
@@ -874,14 +874,6 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   !!!status = nf90_get_var(ncid,unlimdimid,TIMELINE)
   !!!time_len = minloc(TIMELINE,MASK=TIMELINE.LT.0)
 
-  status = nf90_inq_varid(ncid, "xn", VarId)
-  status = nf90_get_var(ncid, VarId, NXtot)
-  status = nf90_inq_varid(ncid, "yn", VarId)
-  status = nf90_get_var(ncid, VarId, NYtot)
-
-  x_grid = NXtot - xgrid - 1
-  x_grid = xgrid - NXtot + 1
-  
   ! For frequency
   ! * Frequency from OUT_FILE:
   idx = scan(OUT_FILE,'f',back=.true.)+1
@@ -979,9 +971,9 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
     
   ! writting x_grid and y grid indexes:
   status = nf90_inq_varid(ncid,"xn", VarId)
-  status = nf90_put_var(ncid, VarId, x_grid, start = (/x_grid/))
+  status = nf90_put_var(ncid, VarId, nx, start = (/x_grid/))
   status = nf90_inq_varid(ncid,"yn", VarId)
-  status = nf90_put_var(ncid, VarId, y_grid, start = (/y_grid/))
+  status = nf90_put_var(ncid, VarId, ny, start = (/y_grid/))
   
   status = NF90_CLOSE(ncid)
   if (status /= NF90_NOERR) stop 'Closing NetCDF was not possible!'
@@ -1005,7 +997,9 @@ end subroutine storencdf
 subroutine MP_storencdf(OUT_FILE,time_len,i_freq,y_grid,x_grid,NLYR,LAYERS,TEMP,PRESS,RH,QV,QC,&
      &WD, WS, KEXTQC, KEXTATM, KEXTTOT, ALBEDO, BACKSCATT, GCOEFF)
   use netcdf
-
+  use variables, only : nx, ny, KEXTATMO, rain_water, cloud_ice, snow, graupel,&
+       &kextrain, kextice, kextsnow, kextgraupel
+  
   implicit none
 
   character(len=*), intent(in) :: OUT_FILE
@@ -1083,6 +1077,35 @@ subroutine MP_storencdf(OUT_FILE,time_len,i_freq,y_grid,x_grid,NLYR,LAYERS,TEMP,
   if(status /= nf90_NoErr) stop 'QC variable ID cannot be read!'
   status = nf90_put_var(ncid, VarId, QC, start=(/x_grid, y_grid, 1, time_len/),count=(/1,1,NLYR,1/))
   if(status /= nf90_NoErr) stop 'QC cannot be written!'
+
+  ! Writting the QR variable
+  status = nf90_inq_varid(ncid, "qr", VarId)
+  if(status /= nf90_NoErr) stop 'QR variable ID cannot be read!'
+  status = nf90_put_var(ncid, VarId, rain_water(nx, ny, :), &
+       &start=(/x_grid, y_grid, 1, time_len/),count=(/1, 1, NLYR, 1/) )
+  if(status /= nf90_NoErr) stop 'QR cannot be written!'
+
+  ! Writting the QI variable
+  status = nf90_inq_varid(ncid, "qi", VarId)
+  if(status /= nf90_NoErr) stop 'QI variable ID cannot be read!'
+  status = nf90_put_var(ncid, VarId, cloud_ice(nx, ny, :), &
+       &start=(/x_grid, y_grid, 1, time_len/),count=(/1, 1, NLYR, 1/) )
+  if(status /= nf90_NoErr) stop 'QI cannot be written!'
+
+  ! Writting the QS variable
+  status = nf90_inq_varid(ncid, "qs", VarId)
+  if(status /= nf90_NoErr) stop 'QS variable ID cannot be read!'
+  status = nf90_put_var(ncid, VarId, snow(nx, ny, :), &
+       &start=(/x_grid, y_grid, 1, time_len/),count=(/1, 1, NLYR, 1/) )
+  if(status /= nf90_NoErr) stop 'QS cannot be written!'
+
+  ! Writting the QG variable
+  status = nf90_inq_varid(ncid, "qg", VarId)
+  if(status /= nf90_NoErr) stop 'QG variable ID cannot be read!'
+  status = nf90_put_var(ncid, VarId, graupel(nx, ny, :), &
+       &start=(/x_grid, y_grid, 1, time_len/),count=(/1, 1, NLYR, 1/))
+  if(status /= nf90_NoErr) stop 'QG cannot be written!'
+
   ! Writting the Wind Direction variable
   status = nf90_inq_varid(ncid, "wd", VarId)
   if(status /= nf90_NoErr) stop 'WD variable ID cannot be read!'
@@ -1100,16 +1123,46 @@ subroutine MP_storencdf(OUT_FILE,time_len,i_freq,y_grid,x_grid,NLYR,LAYERS,TEMP,
   if(status /= nf90_NoErr) stop 'KEXT_ATMOS variable ID cannot be read!'
   status = nf90_put_var(ncid, VarId, KEXTATM, start=(/x_grid, y_grid, 1, i_freq, time_len/),count=(/1,1,NLYR,1,1/))
   if(status /= nf90_NoErr) stop 'KEXT_ATMOS cannot be written!'
-! Writting the Cloud Extintion coeff
-  status = nf90_inq_varid(ncid, "kext_qc", VarId)
-  if(status /= nf90_NoErr) stop 'KEXT_CLOUD variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, KEXTQC, start=(/x_grid, y_grid, 1, i_freq, time_len/),count=(/1,1,NLYR,1,1/))
-  if(status /= nf90_NoErr) stop 'KEXT_CLOUD cannot be written!'
-! Writting the Total Extintion coeff
+  
+  ! Writting the Total Extintion coeff
   status = nf90_inq_varid(ncid, "kext_tot", VarId)
   if(status /= nf90_NoErr) stop 'KEXT_TOTAL variable ID cannot be read!'
   status = nf90_put_var(ncid, VarId, KEXTTOT, start=(/x_grid, y_grid, 1, i_freq, time_len/),count=(/1,1,NLYR,1,1/))
   if(status /= nf90_NoErr) stop 'KEXT_TOT cannot be written!'
+
+  ! Writting the Cloud Extintion coeff
+  status = nf90_inq_varid(ncid, "kext_qc", VarId)
+  if(status /= nf90_NoErr) stop 'KEXT_CLOUD variable ID cannot be read!'
+  status = nf90_put_var(ncid, VarId, KEXTQC, start=(/x_grid, y_grid, 1, i_freq, time_len/),count=(/1,1,NLYR,1,1/))
+  if(status /= nf90_NoErr) stop 'KEXT_CLOUD cannot be written!'
+
+  ! Writting the Rain Extintion coeff
+  status = nf90_inq_varid(ncid, "kext_qr", VarId)
+  if(status /= nf90_NoErr) stop 'KEXT_RAIN variable ID cannot be read!'
+  status = nf90_put_var(ncid, VarId, kextrain(nx, ny, :), &
+       &start=(/x_grid, y_grid, 1, i_freq, time_len/), count=(/1,1,NLYR,1,1/) )
+  if(status /= nf90_NoErr) stop 'KEXT_RAIN cannot be written!'
+
+  ! Writting the ICE Extintion coeff
+  status = nf90_inq_varid(ncid, "kext_qi", VarId)
+  if(status /= nf90_NoErr) stop 'KEXT_ICE variable ID cannot be read!'
+  status = nf90_put_var(ncid, VarId, kextice(nx, ny, :), &
+       &start=(/x_grid, y_grid, 1, i_freq, time_len/), count=(/1,1,NLYR,1,1/) )
+  if(status /= nf90_NoErr) stop 'KEXT_ICE cannot be written!'
+
+  ! Writting the SNOW Extintion coeff
+  status = nf90_inq_varid(ncid, "kext_qs", VarId)
+  if(status /= nf90_NoErr) stop 'KEXT_SNOW variable ID cannot be read!'
+  status = nf90_put_var(ncid, VarId, kextsnow(nx, ny, :), &
+       &start=(/x_grid, y_grid, 1, i_freq, time_len/), count=(/1,1,NLYR,1,1/) )
+  if(status /= nf90_NoErr) stop 'KEXT_SNOW cannot be written!'
+
+  ! Writting the GRAUPEL Extintion coeff
+  status = nf90_inq_varid(ncid, "kext_qg", VarId)
+  if(status /= nf90_NoErr) stop 'KEXT_GRAUPEL variable ID cannot be read!'
+  status = nf90_put_var(ncid, VarId, kextgraupel(nx, ny, :), &
+       &start=(/x_grid, y_grid, 1, i_freq, time_len/), count=(/1,1,NLYR,1,1/) )
+  if(status /= nf90_NoErr) stop 'KEXT_GRAUPEL cannot be written!'
 
   ! Writting the Total Albedo coeff
   status = nf90_inq_varid(ncid, "alb_tot", VarId)
