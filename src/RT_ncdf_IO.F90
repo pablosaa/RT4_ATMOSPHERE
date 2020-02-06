@@ -834,7 +834,7 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   
   namelist/mwrobsang/nelv,elevations
   
-  print*, 'inside storencdf ', x_grid, y_grid
+  
   ! Extracting information from the OUT_FILE character string:
   ! * The OUT_FILE has the form like:
   ! ../output/TB/RT3TB13090112Exp7.6MaxGa0.2Exp4.0MaxGaExp8.0x001y001f27.20
@@ -979,8 +979,11 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   status = nf90_put_var(ncid, VarId, ny, start = (/y_grid/))
   
   status = NF90_CLOSE(ncid)
-  if (status /= NF90_NOERR) stop 'Closing NetCDF was not possible!'
-
+  if (status /= NF90_NOERR) then
+     print*, NF90_strerror(status)
+     stop 'Closing NetCDF was not possible!'
+  end if
+     
   if(allocated(ZENITH_THTA)) deallocate(ZENITH_THTA)
   if(allocated(TB_THTA)) deallocate(TB_THTA)
   if(allocated(elevations)) deallocate(elevations)
