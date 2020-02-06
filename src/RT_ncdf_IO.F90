@@ -501,7 +501,6 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
   real(kind=8), dimension(10) :: elevations
   namelist/mwrobsang/nelv,elevations
 
-        print*, 'Inside to create', ncfile
   ! reading auxiliary input file with extra elevation angles
   OPEN(UNIT=100, FILE='mwrobsang',STATUS='old',IOSTAT=status)
   if(status.eq.0) then
@@ -835,7 +834,7 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   
   namelist/mwrobsang/nelv,elevations
   
-
+  print*, 'inside storencdf ', x_grid, y_grid
   ! Extracting information from the OUT_FILE character string:
   ! * The OUT_FILE has the form like:
   ! ../output/TB/RT3TB13090112Exp7.6MaxGa0.2Exp4.0MaxGaExp8.0x001y001f27.20
@@ -848,7 +847,7 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   if(idx.eq.1) stop 'no x000_ found in string passed'
 
   read(OUT_FILE(idx:),'(I03XI03)') x_grid, y_grid
-
+  
   if(x_grid.NE.nx.OR.y_grid.NE.ny) stop 'ERROR passing x_grid or y_grid in storecdf'
   x_grid = nx - nx_in + 1
   y_grid = ny - ny_in + 1

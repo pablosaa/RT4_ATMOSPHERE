@@ -578,7 +578,6 @@ C     file_profile='Profilex'//xstr//'y'//ystr//'f'//
 C     $ frq_str 
     
         
-        
 
 c 1017          format(i2,1x,f3.1,1x,f5.1,1x,f6.1)
 c          
@@ -598,7 +597,7 @@ c              write(18,*) 'nz',nz
 c            write(2,1002) nz, hgt_lev(nx,ny,nz),temp_lev(nx,ny,nz),
 c     $ 0.1*press_lev(nx,ny,nz), relhum(nx,ny,nz)
 c 1002    format(i2,1x,f5.1,1x,f5.1,1x,f6.1,1x,f5.1)   
-                do jj=1,200
+             do jj=1,200
               LEGEN(jj)=0.0d0
               LEGENcw(jj)=0.0d0
               LEGENci(jj)=0.0d0
@@ -732,72 +731,71 @@ c     $legen(3),legen(4),legen(20),Nlegen,mindex
              endif
 
 C$$$$$$$$$$$$$$$$$ SINGLE SCATTERING PROPERTIES OF SNOW  CCCCCCCCCCCCCCCCCCCCC
-            if(snow(nx,ny,nz).ge.1e-5) then
-            b_snow=2.0d0    !MKS system 
-            a_msnow=0.038d0   
+
+             if(snow(nx,ny,nz).ge.1e-5) then
+                b_snow=2.0d0    !MKS system 
+                a_msnow=0.038d0   
 
         
-         call REFICE(1,LAM,Tavg,Refre,refim,ABSIND,ABSCOF) 
-           m_ice=refre+Im*refim
-           m_air=1.0d0+0.0d0*Im
-          rad1=0.01
-          !DSD are expressed in terms of snow radii 
-         AD=2.0d0*N_0snowDsnow*dexp(0.107*(273.15-Tavg)) !Field param. ! multiplied by 10^6 is 1/m^4
-         BD=2e-3*(dexp(Gammln(b_snow+1))*a_msnow*N_0snowDsnow
-     $ *dexp(0.107*(273.15-Tavg))*1e6/
-     $ (1e-3*snow(nx,ny,nz)))**(1.0d0/(1.0d0+b_snow))  !mm^-1   !formula 3.12 Mario Mech´s but for radii and units converted
-         rad2=15.0/BD     
-          numrad=500
+                call REFICE(1,LAM,Tavg,Refre,refim,ABSIND,ABSCOF) 
+                m_ice=refre+Im*refim
+                m_air=1.0d0+0.0d0*Im
+                rad1=0.01
+!DSD are expressed in terms of snow radii 
+                AD=2.0d0*N_0snowDsnow*dexp(0.107*(273.15-Tavg)) !Field param. ! multiplied by 10^6 is 1/m^4
+                BD=2e-3*(dexp(Gammln(b_snow+1))*a_msnow*N_0snowDsnow
+     $               *dexp(0.107*(273.15-Tavg))*1e6/
+     $               (1e-3*snow(nx,ny,nz)))**(1.0d0/(1.0d0+b_snow)) !mm^-1   !formula 3.12 Mario Mech´s but for radii and units converted
+                rad2=15.0/BD     
+                numrad=500
 
-         IF(EM_snow.eq.'softs') THEN
-           call MIE_densitysizedep_softsphere(LAM,M_ice,m_air,
-     $  a_msnow, b_snow, RAD1, RAD2, NUMRAD, MAXLEG,
-     .                AD, BD, ALPHA, GAMMA, PHASEFLAG,
+                IF(EM_snow.eq.'softs') THEN
+                   call MIE_densitysizedep_softsphere(LAM,M_ice,m_air,
+     $                  a_msnow, b_snow, RAD1, RAD2, NUMRAD, MAXLEG,
+     .                  AD, BD, ALPHA, GAMMA, PHASEFLAG,
      .                  kextsn, salbsn,backsn, NLEGENsn, LEGENsn,
-     $ LEGEN2sn,LEGEN3sn,LEGEN4sn,'G')
-c       write(18,*)'new values snow', kextsn, salbsn, backsn
+     $                  LEGEN2sn,LEGEN3sn,LEGEN4sn,'G')
+c     write(18,*)'new values snow', kextsn, salbsn, backsn
 
-        ELSEIF(EM_snow.eq.'icesf') THEN 
-          call MIE_densitysizedep_spheremasseq(LAM,M_ice,m_air,
-     $  a_msnow, b_snow, RAD1, RAD2, NUMRAD, MAXLEG,
-     .                AD, BD, ALPHA, GAMMA, PHASEFLAG,
+                ELSEIF(EM_snow.eq.'icesf') THEN 
+                   call MIE_densitysizedep_spheremasseq(LAM,M_ice,m_air,
+     $                  a_msnow, b_snow, RAD1, RAD2, NUMRAD, MAXLEG,
+     .                  AD, BD, ALPHA, GAMMA, PHASEFLAG,
      .                  kextsn, salbsn,backsn, NLEGENsn, LEGENsn,
-     $ LEGEN2sn,LEGEN3sn,LEGEN4sn,'G') 
-         ELSEIF(EM_snow.eq.'snowA'.or.EM_snow.eq.'snowB'.or.
-     $EM_snow.eq.'roset'.or.EM_snow(1:3).eq.'Kim' ) THEN 
-      call MIE_densitysizedep_parameterization(LAM,M_ice,m_air,
-     $a_msnow,b_snow,EM_snow,RAD1,RAD2,NUMRAD,MAXLEG,
-     .AD, BD, ALPHA, GAMMA, PHASEFLAG,
+     $                  LEGEN2sn,LEGEN3sn,LEGEN4sn,'G') 
+                ELSEIF(EM_snow.eq.'snowA'.or.EM_snow.eq.'snowB'.or.
+     $                EM_snow.eq.'roset'.or.EM_snow(1:3).eq.'Kim' ) THEN 
+               call MIE_densitysizedep_parameterization(LAM,M_ice,m_air,
+     $                  a_msnow,b_snow,EM_snow,RAD1,RAD2,NUMRAD,MAXLEG,
+     .                  AD, BD, ALPHA, GAMMA, PHASEFLAG,
      .                  kextsn, salbsn,backsn, NLEGENsn, LEGENsn,
-     $ LEGEN2sn,LEGEN3sn,LEGEN4sn,'G')
+     $                  LEGEN2sn,LEGEN3sn,LEGEN4sn,'G')
 
-           ELSE
-           write(18,*)'no em mod',EM_snow
-           stop 
-           ENDIF
-            Nlegen=max(Nlegen,NLEGENsn)
-       call LEGEndre2PHASEFUNCTION(LEGENsn,NLEGENsn,
-     $ 2,200,P11,ANG) 
-            backsn=kextsn*salbsn*P11(2)     
-c          write(18,*)'esco sn2',snow(nx,ny,nz),densnow,
+                ELSE
+                   print*, 'no em mod ',EM_snow  ! PSG: write(18,*)
+                   stop 
+                ENDIF
+                Nlegen=max(Nlegen,NLEGENsn)
+                call LEGEndre2PHASEFUNCTION(LEGENsn,NLEGENsn,
+     $               2,200,P11,ANG) 
+                backsn=kextsn*salbsn*P11(2)     
+c     write(18,*)'esco sn2',snow(nx,ny,nz),densnow,
 c     $ kextsn,salbsn,legensn(1),legensn(2),
 c     $legensn(3),legensn(4),legensn(20),Nlegen,mindex,nx
-              else
- 444           continue
-            kextsn=0.0d0
-            salbsn=0.0d0
-            backsn=0.0d0 
+             else
+ 444            continue
+                kextsn=0.0d0
+                salbsn=0.0d0
+                backsn=0.0d0 
              endif
           
 C$$$$$$$$$$$$$$$$$ SINGLE SCATTERING PROPERTIES OF GRAUPEL CCCCCCCCCCCCCCCCCCCC
+
              if(graupel(nx,ny,nz).ge.1e-5) then
 c             dengraup=0.4
             b_g=3.1d0
             a_mgraup=169.6d0
 
-
-
-         
          call REFICE(1,LAM,Tavg,Refre,refim,ABSIND,ABSCOF) 
            m_ice=refre+Im*refim
            m_air=1.0d0+0.0d0*Im
@@ -827,7 +825,7 @@ c       write(18,*)'new values', kextgr, salbgr, backgr
 
 
           ELSE
-           write(18,*)'no em mod for grau'
+           print*, 'no em mod for grau'  ! write(18,*)
 c           stop 
           ENDIF
            Nlegen=max(Nlegen,NLEGENgr)
@@ -892,7 +890,7 @@ C
      $ (hgt_lev(nx,ny,nz)-hgt_lev(nx,ny,nz-1))
 
 C   summing up the Legendre coefficient               
-        
+
         if ( kexttot(nx,ny,nz) .le. 0.0 .or. !
      $       salbtot(nx,ny,nz) .le. 0.0) then
            FILE_PH(nz)=''
