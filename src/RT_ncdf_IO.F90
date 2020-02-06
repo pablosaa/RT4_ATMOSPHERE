@@ -501,6 +501,7 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
   real(kind=8), dimension(10) :: elevations
   namelist/mwrobsang/nelv,elevations
 
+        print*, 'Inside to create', ncfile
   ! reading auxiliary input file with extra elevation angles
   OPEN(UNIT=100, FILE='mwrobsang',STATUS='old',IOSTAT=status)
   if(status.eq.0) then
@@ -512,7 +513,7 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
   end if
   NANGLES = NUMMU + nelv
 
-  status = nf90_create(trim(ncfile),NF90_CLOBBER,ncid)
+  status = nf90_create(trim(ncfile),ior(NF90_CLOBBER,NF90_64BIT_OFFSET),ncid)
   if(status /= nf90_NOERR) stop 'Output NetCDF not possible to create: '  !//nf90_strerror(status) 
 
   ! Defining dimensions
@@ -783,7 +784,10 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
   status = nf90_put_var(ncid, var_lonid, SLON)
   
   status = nf90_close(ncid)
-  if (status /= NF90_NOERR) stop 'Error closing after creation NetCDF file!'
+  if (status /= NF90_NOERR) then
+        print*, nf90_strerror(status)
+        stop 'Error closing after creation NetCDF'
+  end if 
 end subroutine createncdf
 ! ___________________________________________________________________________
 

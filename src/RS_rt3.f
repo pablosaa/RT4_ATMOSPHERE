@@ -398,7 +398,7 @@ c     write(*,29) frq_str
 C     !PSG: Passing temporal variables to old variables (no time)
             i_time = 0
 
-            DO 646, timeidx = 1, 1 !ntime
+            DO 646, timeidx = 1, ntime
                write(*,*) 'running on thread: ', OMP_GET_THREAD_NUM(),
      $              OMP_GET_MAX_THREADS()
 
