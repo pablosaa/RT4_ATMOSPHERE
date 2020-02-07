@@ -832,9 +832,6 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   real(kind=8), parameter :: PI = 4.0*atan(1.0)
   integer :: nelv, NANG
   
-  namelist/mwrobsang/nelv,elevations
-  
-  
   ! Extracting information from the OUT_FILE character string:
   ! * The OUT_FILE has the form like:
   ! ../output/TB/RT3TB13090112Exp7.6MaxGa0.2Exp4.0MaxGaExp8.0x001y001f27.20

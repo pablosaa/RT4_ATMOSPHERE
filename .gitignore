@@ -6,7 +6,7 @@ output/tmp/*
 output/TB/*
 
 # some testing files in source directory
-./src/garbage
+src/garbage
 
 # log files
 *.log
