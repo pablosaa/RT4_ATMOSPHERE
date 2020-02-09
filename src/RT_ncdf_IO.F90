@@ -512,7 +512,7 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
   end if
   NANGLES = NUMMU + nelv
 
-  status = nf90_create(trim(ncfile),NF90_CLOBBER,ncid)
+  status = nf90_create(trim(ncfile),ior(NF90_CLOBBER,NF90_64BIT_OFFSET),ncid)
   if(status /= nf90_NOERR) stop 'Output NetCDF not possible to create: '  !//nf90_strerror(status) 
 
   ! Defining dimensions
@@ -783,7 +783,10 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
   status = nf90_put_var(ncid, var_lonid, SLON)
   
   status = nf90_close(ncid)
-  if (status /= NF90_NOERR) stop 'Error closing after creation NetCDF file!'//nf90_strerror(status)
+  if (status /= NF90_NOERR) then
+        print*, nf90_strerror(status)
+        stop 'Error closing after creation NetCDF'
+  end if 
 end subroutine createncdf
 ! ___________________________________________________________________________
 
@@ -829,9 +832,6 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   real(kind=8), parameter :: PI = 4.0*atan(1.0)
   integer :: nelv, NANG
   
-  namelist/mwrobsang/nelv,elevations
-  
-
   ! Extracting information from the OUT_FILE character string:
   ! * The OUT_FILE has the form like:
   ! ../output/TB/RT3TB13090112Exp7.6MaxGa0.2Exp4.0MaxGaExp8.0x001y001f27.20
@@ -844,7 +844,7 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   if(idx.eq.1) stop 'no x000_ found in string passed'
 
   read(OUT_FILE(idx:),'(I03XI03)') x_grid, y_grid
-
+  
   if(x_grid.NE.nx.OR.y_grid.NE.ny) stop 'ERROR passing x_grid or y_grid in storecdf'
   x_grid = nx - nx_in + 1
   y_grid = ny - ny_in + 1
@@ -976,8 +976,11 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   status = nf90_put_var(ncid, VarId, ny, start = (/y_grid/))
   
   status = NF90_CLOSE(ncid)
-  if (status /= NF90_NOERR) stop 'Closing NetCDF was not possible!'
-
+  if (status /= NF90_NOERR) then
+     print*, NF90_strerror(status)
+     stop 'Closing NetCDF was not possible!'
+  end if
+     
   if(allocated(ZENITH_THTA)) deallocate(ZENITH_THTA)
   if(allocated(TB_THTA)) deallocate(TB_THTA)
   if(allocated(elevations)) deallocate(elevations)

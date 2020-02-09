@@ -11,7 +11,7 @@
 	GAS_EXTINCTION=.true.,
 	SD_snow='Exp',
 	N_0snowDsnow=7.6,
-	EM_snow='MaxGa',
+	EM_snow='softs',
 	SP=0.2,
 	SD_grau='Exp',
 	N_0grauDgrau=4.0,

@@ -5,7 +5,7 @@ CF = /usr/bin/gfortran
 HOSTNAME = $(shell hostname)
 
 # netCDF library paths:
-ifeq "$(HOSTNAME)" "cyclone"
+ifeq "$(HOSTNAME)" "cyclone.hpc.uib.no"
 LIBPATH = $(EBROOTNETCDFMINFORTRAN)/lib
 INCPATH = $(EBROOTNETCDFMINFORTRAN)/include
 else
