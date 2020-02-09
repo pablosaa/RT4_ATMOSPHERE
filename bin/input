@@ -1,5 +1,5 @@
 &inputparam
-	input_file='/home/pga082/Downloads/wrfout_d01_2005-08-28_00_00_00',
+	input_file='/home/pablo/GFI/data/WRF/wrfout_d03_2010-09-15_06:00:00',
 	nx_in=1,
 	nx_fin=1,
 	ny_in=1,
