@@ -783,7 +783,7 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
   status = nf90_put_var(ncid, var_lonid, SLON)
   
   status = nf90_close(ncid)
-  if (status /= NF90_NOERR) stop 'Error closing after creation NetCDF file!'
+  if (status /= NF90_NOERR) stop 'Error closing after creation NetCDF file!'//nf90_strerror(status)
 end subroutine createncdf
 ! ___________________________________________________________________________
 
