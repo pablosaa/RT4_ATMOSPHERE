@@ -474,6 +474,7 @@ end subroutine read_wyosonde
 subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
      &LAYERS,freq_str,input_file,micro_phys,SELV,SLAT,SLON,origin_str)
   use netcdf
+  use variables, only : nelv, elevations
   implicit none
 
   integer, intent(in) :: ncflen
@@ -497,19 +498,20 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
   integer :: var_salbtot_id, var_backsct_id, var_gcoeff_id
   integer, dimension(NSTOKES) :: stokes_var
   !real(kind=4), dimension(NTIME) :: TIMELINE
-  integer :: nelv, NANGLES
-  real(kind=8), dimension(10) :: elevations
-  namelist/mwrobsang/nelv,elevations
+  integer :: NANGLES !!nelv, 
+
+  !!real(kind=8), dimension(10) :: elevations
+  !!namelist/mwrobsang/nelv,elevations
 
   ! reading auxiliary input file with extra elevation angles
-  OPEN(UNIT=100, FILE='mwrobsang',STATUS='old',IOSTAT=status)
-  if(status.eq.0) then
-     READ(UNIT=100,nml=mwrobsang)
-     close(UNIT=100)
-  else
-     nelv = 0
-     elevations = 0
-  end if
+  !!OPEN(UNIT=100, FILE='mwrobsang',STATUS='old',IOSTAT=status)
+  !!if(status.eq.0) then
+  !!   READ(UNIT=100,nml=mwrobsang)
+  !!   close(UNIT=100)
+  !!else
+  !!   nelv = 0
+  !!   elevations = 0
+  !!end if
   NANGLES = NUMMU + nelv
 
   status = nf90_create(trim(ncfile),ior(NF90_CLOBBER,NF90_64BIT_OFFSET),ncid)
@@ -578,8 +580,8 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
   status = nf90_put_att(ncid,var_mu_id,"short_name","theta_z")
   status = nf90_put_att(ncid,var_mu_id,"long_name","Zenithal angle")
   status = nf90_put_att(ncid,var_mu_id,"units","degree")
-  status = nf90_put_att(ncid,var_mu_id,"N_obs_angles",nelv)
-  status = nf90_put_att(ncid,var_mu_id,"Obs_angles_degree",elevations(:nelv))
+  status = nf90_put_att(ncid,var_mu_id,"N_obs_angles", nelv)
+  status = nf90_put_att(ncid,var_mu_id,"Obs_angles_degree", elevations(:nelv))
   status = nf90_put_att(ncid,var_mu_id,"N_sim_angles",NUMMU)
 
   status = nf90_put_att(ncid,var_stok_id,"short_name","stk")

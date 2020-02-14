@@ -1,5 +1,10 @@
       module variables
+!     Indexes:
+      integer :: nx_in, nx_fin, ny_in, ny_fin, nx, ny
+      integer :: n_freq, ifreq, nelv, timeidx, i_time ! PSG: new block... , ntime      
       integer ngridx, ngridy, nlyr, ntime
+!     Observation variables
+      real(kind=8), allocatable :: elevations(:)
       integer(kind=4), allocatable :: qidx(:,:,:)
       real(kind=8), allocatable, dimension(:,:,:,:) :: hgt_tmp,
      $     temp_tmp, press_tmp, relhum_tmp,
@@ -9,7 +14,8 @@
       real(kind=4) ,allocatable, dimension(:,:) :: lat, lon
       character(len=:), allocatable :: TimeStamp(:)
 
-! PSG: following block adapted for allocatable variables:
+!     PSG: following block adapted for allocatable variables:
+      real(kind=8), allocatable, dimension(:) :: FREQ   ! PSG: making FREQ vector for many frequencies
       real(kind=8), allocatable, dimension(:,:,:) :: hgt_lev,
      $     press_lev, temp_lev, relhum_lev, cloud_water,
      $     rain_water, cloud_ice, snow, graupel,
@@ -26,9 +32,6 @@
       real(kind=8), allocatable, dimension(:) :: LYR_TEMP, LYR_PRES,
      &     REL_HUM, KEXTATMO, AVGPRESSURE, VAPORPRESSURE
 
-!     Indexes:
-      integer :: nx_in, nx_fin, ny_in, ny_fin, nx, ny
-      integer :: n_freq, ifreq, timeidx, i_time ! PSG: new block... , ntime      
 !     Constants:
       real, parameter :: PI = dacos(-1.0d0)
       real, parameter :: PI2deg = 45.0/atan(1.0d0)
@@ -66,12 +69,12 @@ C                    **  RADTRAN I/O SPECIFICATIONS  **
       character Nzstr*3,xstr*3,ystr*3,   ! PSG: Nzstr*2
      $ xstr1*3,ystr1*3,xstr2*3,ystr2*3,
      $ frq_str*5,theta_str*3 ,H_str*3,surf_type*10
-      character input_file*99, micro_str*31,   ! PSG: original was input_file*99, frq_str*4
+      character input_type*5, input_file*99, micro_str*31,   ! PSG: original was input_file*99, frq_str*4
      $ SP_str*3,str1*1, DELTAM*1,
      $file_profile2*78,SD_snow*3,EM_snow*5,SD_grau*3,EM_grau*5,
      $ SD_rain*3,N0snowstr*3,N0graustr*3,N0rainstr*3
        REAL*8    DIRECT_FLUX, DIRECT_MU
-      real*8      freq(20),lam,gammln     ! PSG: making FREQ vector for many frequencies
+       real*8     lam,gammln
       character*2 year,month,day, hour    ! PSG: including hour
       character*8  date_str, sim_tag      ! PSG: was character*6  date_str, new sim_tag
       INTEGER AUIOF, BUIO                 ! PSG: open-file units depending on OMP_THREAD
@@ -199,10 +202,13 @@ C     !PSG: Following temporal varaibles is to include NetCDF time depending
        !real*4 dd(mxgridx,mxgridy,mxtime), hh(mxgridx,mxgridy,mxtime)
        !real*4 lat(mxgridx,mxgridy),lon(mxgridx,mxgridy)
 
-       namelist/inputparam/input_file, nx_in,nx_fin,ny_in,ny_fin,n_freq,
-     $      tau_min,tau_max, FREQ,
+       namelist/inputparam/input_type, input_file, nx_in, nx_fin,
+     $      ny_in, ny_fin, n_freq, nelv
+       namelist/inputphysics/FREQ, tau_min, tau_max,
      $      GAS_EXTINCTION, SD_snow, N_0snowDsnow,EM_snow,SP,SD_grau,
      $      N_0grauDgrau, EM_grau,SD_rain, N_0rainD
+       namelist/inputobs/elevations
+       
        integer istatus
        integer NXtot, NYtot, nx_idx, ny_idx
        
@@ -243,9 +249,20 @@ c
 c     Get input/output file names from command line.  
 c
 !     PSG: input block for input parameters:
-       OPEN(UNIT=100,FILE='input',STATUS='old',IOSTAT=istatus)
+       OPEN(UNIT=100, FILE='input',STATUS='old',IOSTAT=istatus)
+
        if(istatus.eq.0) then
-          READ(UNIT=100,nml=inputparam)
+          READ(UNIT=100, nml=inputparam, IOSTAT=istatus)
+          if(istatus.NE.0) STOP 'something wrong by input parameters'
+       
+          if(n_freq.gt.0) allocate(FREQ(n_freq) )
+          READ(UNIT=100, nml=inputphysics, IOSTAT=istatus)
+          if(istatus.NE.0) STOP 'something wrong by physics parameters'
+                    
+          if(nelv.GT.0) allocate(elevations(nelv) )
+          READ(UNIT=100, nml=inputobs, IOSTAT=istatus)
+          if(istatus.ne.0) STOP 'something wrong by obs parameters'
+
           close(UNIT=100)
        else
           WRITE (*,'(1X,A)') 'CRM input file'
@@ -273,9 +290,19 @@ C        LAM=299.7925/freq !mm
                 
         print*,'netCDF input files is '//input_file
 C     !PSG: Calling the NetCDF routine to read data
-        call read_wrf(len_trim(input_file), input_file,
-     $       deltaxy, origin_str)
+        select case(trim(input_type) )
+        case('wrf')
+           call read_wrf(len_trim(input_file), input_file,
+     $          deltaxy, origin_str)
 
+        case('wyors')
+           STOP 'WyoSonde input needs adaptation'
+        case('arome')
+           STOP 'AROME modell not yet implemented'
+        case default
+           STOP 'wrong input_type! support: wrf, arome or wyors'
+        end select
+        
         ! PSG: Checking if customized grid size has been given in 'input'
         if(nx_in.EQ.0) nx_in = 1
         if(nx_fin.EQ.0) nx_fin = ngridx
