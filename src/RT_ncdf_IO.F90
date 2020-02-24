@@ -25,6 +25,15 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
   use variables
 
   implicit none
+  interface
+     subroutine check_nc(status, message, FLAG)
+       implicit none
+       integer, intent(in) :: status
+       character(len=*), optional, intent(in) :: message
+       logical, optional, intent(in) :: FLAG
+     end subroutine check_nc
+  end interface
+
   integer, intent(in) :: ncflen
   character(len=ncflen), intent(in) :: ncfile
   ! -- Here come variables declaration alike the onses used by RT3
@@ -32,59 +41,134 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
   character(len=*), intent(out) :: origin_str
 
   ! -- end of variable declaration
-  integer, constant :: Ninvar = 18
+  integer, parameter :: Ninvar = 18, Nindim = 4
   integer :: status
   integer :: ncid, ndims_in, nvars_in ,ngatts_in, unlimdimid_in
-  integer :: VarID
-  character(len=15), allocatable :: dim_name(:)
-  character(len=30), varname
+  integer :: VarID, dim_ID
+
+  character(len=30) :: varname
   integer, allocatable, dimension(:) :: myVarIDs, dim_len
-
+  character(len=6), allocatable :: dim_name(:)
   ! Auxiliary variables for magnitude conversions:
+  integer :: i, NN
   real(kind=8), allocatable, dimension(:,:,:,:) :: U_Vel, V_vel, mixratio
-  character(len=15), dimensions(Ninvar) :: arome_name
-
   ! List of variable names to load (AROME convention)
-  arome_name(1) = 'air_temperature_2m'
-  arome_name(2) = 'surface_air_pressure'
-  arome_name(3) = 'Q2'
-  arome_name(4) = 'XLAT'
-  arome_name(5) = 'XLONG'
-  arome_name(6) = 'PHB'
-  arome_name(7) = 'hybrid'
-  arome_name(8) = 'air_temperature_ml'
-  arome_name(9) = 'QVAPOR'
-  arome_name(10) = 'QCLOUD'
-  arome_name(11) = 'QRAIN'
-  arome_name(12) = 'QICE'
-  arome_name(13) = 'QSNOW'
-  arome_name(14) = 'QGRAUP'
-  arome_name(15) = 'V'
-  arome_name(16) = 'U'
-  arome_name(17) = 'Times'
-  arome_name(18) = 'QXI'
+  !character(len=6), dimension(Nindim), parameter :: dim_name = &
+  !     &[ character(len=6):: "time", "x", "y", "hybrid" ]
+  character(len=69), dimension(Ninvar), parameter :: arome_name = &
+       &[ character(len=69):: &
+       & 'air_temperature_2m', &
+       & 'surface_air_pressure', &
+       & 'relative_humidity_2m', &
+       & 'latitude', &
+       & 'longitude', &
+       & 'atmosphere_boundary_layer_thickness', &
+       & 'hybrid', &
+       & 'air_temperature_ml', &
+       & 'specific_humidity_ml', &
+       & 'mass_fraction_of_cloud_condensed_water_in_air_ml', &
+       & 'mass_fraction_of_rain_in_air_ml', &
+       & 'mass_fraction_of_cloud_ice_in_air_ml', &
+       & 'mass_fraction_of_snow_in_air_ml', &
+       & 'mass_fraction_of_graupel_in_air_ml', &
+       & 'x_wind_ml', &
+       & 'y_wind_ml', &
+       & 'time', &
+       & 'QXI']
 
   ! -----------------------------------------------------------------------------
   ! Open file and read directory
-  print*,'WRF netCDF input files is', ncflen, ' : ', trim(ncfile)
+  print*,'AROME-Arctic netCDF input files is : ', trim(ncfile)
   
   status = nf90_open(ncfile,NF90_NOWRITE,ncid)
   call check_nc(status, 'Cannot open AROME netCDF-file '//trim(ncfile))
 
-  status = nf90_inquire(ncid, ndims_in, nvars_in, ngatts_in, unlimdimid_id)
+  status = nf90_inquire(ncid, ndims_in, nvars_in, ngatts_in, unlimdimid_in)
   call check_nc(status, 'Inquiring dimensions for AROME')
 
-  allocate(dim_len(ndims_in), dim_name(ndim_in) )
+  allocate(dim_len(ndims_in), dim_name(ndims_in) )
+  
+  do i=1,Nindim
+     print*, "dimensions to read ", trim(dim_name(i)), "."
+     status = nf90_inquire_dimension(ncid, i, dim_name(i), dim_len(i) )
+     call check_nc(status)
+     select case(trim(dim_name(i)) )
+     case('x')
+        ngridx = dim_len(i)
+     case('y')
+        ngridy = dim_len(i)
+     case('hybrid')
+        nlyr = dim_len(i)
+     case('time')
+        ntime = dim_len(i)
+     case default
+        print*, 'netCDF file dimension '//trim(dim_name(i))//' unknown!'
+        ! stop
+     end select     
+  end do
+
+  do i = 1, Ninvar
+     status = nf90_inq_varid(ncid, trim(arome_name(i) ), VarId)
+     call check_nc(status, 'WARNING: variable cannot be read.')
+     select case(trim(arome_name(i) ))
+        ! *** Reading for WRF SURFACE variables:
+     case('air_temperature_2m')
+        status = nf90_get_var(ncid, VarId, temp_tmp(:, :, 0, :))
+     case('surface_air_pressure')
+        status = nf90_get_var(ncid, VarId, press_tmp(:, :, 0, :))
+     case('Q2') !???
+        status = nf90_get_var(ncid, VarId, mixratio(:, :, 0, :))
+     case('latitude')
+        status = nf90_get_var(ncid, VarId, lat, start=(/1,1,1/), count=(/ngridx, ngridy, 1/))
+     case('longitude')
+        status = nf90_get_var(ncid, VarId, lon, start=(/1,1,1/), count=(/ngridx, ngridy, 1/))
+        ! *** Reading for WRF PROFILE variables:
+     case('PHB') ! ???
+        status = nf90_get_var(ncid, VarId, hgt_tmp)
+        hgt_tmp = 1.0E-3*hgt_tmp/9.81  ! [km]
+     case('hybrid') ! adapt from sigma to pressure levels
+        status = nf90_get_var(ncid, VarId, press_tmp(:, :, 1:nlyr, :))
+        press_tmp = press_tmp*1E-2  ! [hPa]
+     case('air_temperature_ml')
+        status = nf90_get_var(ncid, VarId, temp_tmp(:, :, 1:nlyr, :))
+     case('specific_humidity_ml')
+        status = nf90_get_var(ncid, VarId, mixratio(:, :, 1:nlyr, :))
+     case('mass_fraction_of_cloud_condensed_water_in_air_ml')
+        status = nf90_get_var(ncid, VarId, cloud_water_tmp)
+     case('mass_fraction_of_rain_in_air_ml')
+        status = nf90_get_var(ncid, VarId, rain_water_tmp)
+     case('mass_fraction_of_cloud_ice_in_air_ml')
+        status = nf90_get_var(ncid, VarId, cloud_ice_tmp)
+     case('mass_fraction_of_snow_in_air_ml')
+        status = nf90_get_var(ncid, VarId, snow_tmp)
+     case('mass_fraction_of_graupel_in_air_ml')
+        status = nf90_get_var(ncid, VarId, graupel_tmp)
+     case('x_wind_ml')
+        status = nf90_get_var(ncid, VarId, V_Vel, start=(/1,2,1,1/) )
+     case('y_wind_ml')
+        status = nf90_get_var(ncid, VarId, U_Vel, start=(/2,1,1,1/) )
+     case('time')
+        status = nf90_get_var(ncid, VarId, TimeStamp)
+     case default
+        print*, 'WARNING: WRF variable ', trim(varname),' not recognized.'
+     end select
+  end do
+
+  stop
+
 end subroutine read_arome
 ! --------------------------------------------------------------------------------------
 
-subroutine check_nc(status, message)
+subroutine check_nc(status, message, FLAG)
+  use netcdf
   implicit none
   integer, intent(in) :: status
   character(len=*), optional, intent(in) :: message
+  logical, optional, intent(in) :: FLAG
   if(status.EQ.NF90_NOERR) return
   ! Ups... error happened?
   print *, NF90_STRERROR(status)
+  
   if(present(message) ) print*, message
   if(present(FLAG) ) stop
   return

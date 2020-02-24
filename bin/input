@@ -1,5 +1,5 @@
 &inputparam
-	input_type='wrf',
+	input_type='arome',
 	input_file='/home/pablo/GFI/data/WRF/wrfout_d03_2010-09-15_06:00:00',
 	nx_in=1,
 	nx_fin=1,
