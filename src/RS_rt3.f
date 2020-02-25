@@ -300,11 +300,11 @@ C     !PSG: Calling the NetCDF routine to read data
         case('arome')
            call read_arome(len_trim(input_file), input_file,
      $          deltaxy, origin_str)
-           STOP 'AROME modell not yet implemented'
+
         case default
            STOP 'wrong input_type! support: wrf, arome or wyors'
         end select
-        
+        stop
         ! PSG: Checking if customized grid size has been given in 'input'
         if(nx_in.EQ.0) nx_in = 1
         if(nx_fin.EQ.0) nx_fin = ngridx
