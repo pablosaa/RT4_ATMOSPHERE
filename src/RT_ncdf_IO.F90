@@ -47,7 +47,6 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
   integer :: VarID, dim_len
 
   character(len=30) :: varname
-  integer, allocatable, dimension(:) :: myVarIDs
   character(len=10) :: dim_name
   ! Auxiliary variables for magnitude conversions:
   integer :: i, NN
@@ -59,7 +58,7 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
        &[ character(len=69):: &
        & 'air_temperature_2m', &
        & 'surface_air_pressure', &
-       & 'relative_humidity_2m', &
+       & 'specific_humidity_2m', &
        & 'latitude', &
        & 'longitude', &
        & 'atmosphere_boundary_layer_thickness', &
@@ -81,10 +80,10 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
   print*,'AROME-Arctic netCDF input files is : ', trim(ncfile)
   
   status = nf90_open(ncfile,NF90_NOWRITE,ncid)
-  call check_nc(status, 'Cannot open AROME netCDF-file '//trim(ncfile))
+  call check_nc(status, 'Cannot open AROME netCDF-file '//trim(ncfile), .TRUE.)
 
   status = nf90_inquire(ncid, ndims_in, nvars_in, ngatts_in, unlimdimid_in)
-  call check_nc(status, 'Inquiring dimensions for AROME')
+  call check_nc(status, 'Inquiring dimensions for AROME', .TRUE.)
 
   do i=1, ndims_in
      status = nf90_inquire_dimension(ncid, i, dim_name, dim_len )
@@ -103,7 +102,8 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
      end select     
   end do
 
-  call alloc_global_variables
+  ! Allocate global variables according to dimensions:
+  CALL alloc_global_variables
 
   ! For local variables:
   allocate(sigma_hybrid(nlyr) )
@@ -112,6 +112,7 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
   allocate(V_Vel(ngridx, ngridy, nlyr, ntime) )
   
   do i = 1, NVarIn
+     print*, 'Reading variable: ', trim(arome_name(i) )
      status = nf90_inq_varid(ncid, trim(arome_name(i) ), VarId)
      call check_nc(status, 'WARNING: variable cannot be read.')
      status = nf90_get_att(ncid, VarId, 'scale_factor', faktor)
@@ -174,8 +175,12 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
         
      case('time')
         status = nf90_get_var(ncid, VarId, TimeStamp)
+     case('atmosphere_boundary_layer_thickness')
+        ! not yet implemented
+     case('QXI')
+        qidx = 15
      case default
-        print*, 'WARNING: WRF variable ', trim(varname),' not recognized.'
+        print*, 'WARNING: WRF variable ', trim(arome_name(i)),' not recognized.'
      end select
   end do
 
@@ -207,7 +212,7 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
   ! Closing the NetCDF file
   status = nf90_close(ncid)
   
-  deallocate(myVarIDs, sigma_hybrid, U_Vel, V_Vel, mixratio)
+  deallocate(sigma_hybrid, U_Vel, V_Vel, mixratio)
 
   stop
 
