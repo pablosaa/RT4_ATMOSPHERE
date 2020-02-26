@@ -1,6 +1,7 @@
 ! *****************************************************************************************
 ! Set of subroutines to manage netCDF input/output files.
 ! -----------------------------------------------------------------------------------------
+! * read_arome   : read netCDF files from AROME-Arctic output files,
 ! * read_wrf     : read netCDF files from WRF output files,
 ! * read_wyosonde: read netCDF files from radiosondes with homoginized layers,
 ! * createncdf   : create and setup variables and dimensions for RT output files,
@@ -11,6 +12,7 @@
 ! Geophysical Institute, University of Bergen
 ! SEE LICENSE.TXT
 ! --------------------------------------------------------------------------------------
+
 
 ! ______________________________________________________________________________________
 ! --------------------------------------------------------------------------------------
@@ -32,6 +34,14 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
        character(len=*), optional, intent(in) :: message
        logical, optional, intent(in) :: FLAG
      end subroutine check_nc
+
+     function flip_4Dvariable_dim(VAR, dims) result(OUTVAR)
+       implicit none
+       integer, intent(in) :: dims
+       real(kind=8), intent(in) :: VAR(:,:,:,:) !
+       real(kind=8), allocatable :: OUTVAR(:,:,:,:)
+     end function flip_4Dvariable_dim
+
   end interface
 
   integer, intent(in) :: ncflen
@@ -54,7 +64,7 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
   real(kind=8), allocatable, dimension(:,:,:,:) :: U_Vel, V_vel, QV
   real, allocatable, dimension(:) :: sigma_hybrid
   
-  character(len=69), dimension(NVarIn), parameter :: arome_name = &
+  character(len=69), dimension(*), parameter :: arome_name = & !NVarIn
        &[ character(len=69):: &
        & 'air_temperature_2m', &
        & 'surface_air_pressure', &
@@ -72,8 +82,7 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
        & 'mass_fraction_of_graupel_in_air_ml', &
        & 'x_wind_ml', &
        & 'y_wind_ml', &
-       & 'time', &
-       & 'QXI']
+       & 'time']
 
   ! -----------------------------------------------------------------------------
   ! Open file and read directory
@@ -111,10 +120,11 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
   allocate( U_Vel(ngridx, ngridy, nlyr, ntime) )
   allocate( V_Vel(ngridx, ngridy, nlyr, ntime) )
   
-  do i = 1, NVarIn
+  do i = 1, size(arome_name)
      print*, 'Reading variable: ', trim(arome_name(i) )
      status = nf90_inq_varid(ncid, trim(arome_name(i) ), VarId)
-     call check_nc(status, 'WARNING: variable cannot be read.')
+     call check_nc(status, 'WARNING: for '//trim(arome_name(i)) )
+
      status = nf90_get_att(ncid, VarId, 'scale_factor', faktor)
      if(status.NE.NF90_NOERR) faktor = 1.
      
@@ -146,6 +156,8 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
      case('air_temperature_ml')
         status = nf90_get_var(ncid, VarId, temp_tmp(:, :, 1:nlyr, :))
         temp_tmp(:, :, 1:nlyr, :) = faktor*temp_tmp(:, :, 1:nlyr, :)
+        temp_tmp = flip_4Dvariable_dim(temp_tmp, dims=3)
+
      case('specific_humidity_ml')
         status = nf90_get_var(ncid, VarId, QV(:, :, 1:nlyr, :))
         QV(:, :, 1:nlyr, :) = faktor*QV(:, :, 1:nlyr, :)
@@ -175,38 +187,45 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
         
      case('time')
         status = nf90_get_var(ncid, VarId, TimeStamp)
+        
      case('atmosphere_boundary_layer_thickness')
         ! not yet implemented
      case('QXI')
         qidx = 15
+        
      case default
         print*, 'WARNING: WRF variable ', trim(arome_name(i)),' not recognized.'
      end select
   end do
 
   ! 1) Converting sigma_hybrid to pressure levels
+  print*, '1. converting sigma to P'
   do i=1, nlyr
      press_tmp(:, :, i, :) = sigma_hybrid(i)*press_tmp(:, :, 0, :)
   end do
-  !spread(press_tmp(:, :, 0, :), 3, nlyr)
+
   press_tmp = press_tmp*1E-2  ! [hPa]
 
-  ! 2) Converting Vapor mixing ratio to Relative Humidity
+  ! 2) Converting vapour mixing ratio to Relative Humidity
+  print *, '2. converting Qv to RG'
   call qv2rh(ngridx, ngridy, 1+nlyr, ntime,&
        & QV, press_tmp, temp_tmp, relhum_tmp)
-  mixr_tmp = 1E3*QV(:, :, 1:nlyr, :)/(1 - QV(:,:,1:nlyr,:))
 
-  ! 3) Converting Wind U and V components to Windspeed and Direction:
+  ! 3) Converting specific humidity to vapour mixing ratio
+  print *, '3. converting Qv to mixr'
+  mixr_tmp = 1E3*QV(:, :, 1:nlyr, :)
+  mixr_tmp = mixr_tmp/(1 - mixr_tmp)
+
+  ! 4) Converting Wind U and V components to Windspeed and Direction:
+  print *, '4. converting U V to spped dir'
   call Wind_UV2speeddir(ngridx, ngridy, 1+nlyr, ntime,&
        & U_Vel, V_Vel, windvel_tmp, winddir_tmp)
-  !windvel_tmp(:ngridx, :ngridy, :nlyr, :ntime) = sqrt( U_Vel*U_Vel + V_Vel*V_Vel)
-  !winddir_tmp(:ngridx, :ngridy, :nlyr, :ntime) = modulo(360.0 - atan2(U_Vel, V_Vel)*PI2deg, 360.0)
 
   ! ****************************
   ! Retrieving Global Attribute:
   !status = nf90_get_att(ncid,NF90_GLOBAL, 'DX', del_xy(1))
   !status = nf90_get_att(ncid,NF90_GLOBAL, 'DY', del_xy(2))
-  del_xy = 2.5
+  del_xy = 2.5  ! [km]
   status = nf90_get_att(ncid,NF90_GLOBAL, 'title', varname)
   write(origin_str,'(A)')  trim(varname)//'->'//trim(ncfile)
   
@@ -1545,7 +1564,7 @@ subroutine qv2rh(nx, ny, nz, nt, QV, P, T, RH)
 end subroutine qv2rh
 ! ----
 
-! -----------------------------------------------------------------
+! ____________________________________________________________________
 ! CONVERT perturbation potential temperature (theta-t0)
 ! to Temperature.
 !
@@ -1589,3 +1608,43 @@ subroutine Wind_UV2speeddir(nx, ny, nz, nt, U, V, WS, WD)
   return
 end subroutine Wind_UV2speeddir
 ! ----
+
+! __________________________________________________________________
+! FUNCTION to flip upside-down elemens from a specified dimension
+! in a 4D array. Used mainly for AROME variables.
+!
+! (c) 2020, Pablo Saavedra G.
+! Geophysical Institute, University of Bergen
+! See LICENSE
+! ---
+function flip_4Dvariable_dim(VAR, dims) result(OUTVAR)
+  implicit none
+  integer, intent(in) :: dims
+  real(kind=8), intent(in) :: VAR(:,:,:,:) !
+  real(kind=8), allocatable :: OUTVAR(:,:,:,:)
+  ! local variables
+  integer :: LB, UB
+        
+  LB = lbound(VAR, dims)
+  UB = ubound(VAR, dims)
+  allocate(OUTVAR(size(VAR,1), size(VAR,2), size(VAR,3), size(VAR,4) ))
+
+  select case(dims)
+  case(1)
+     OUTVAR = VAR(UB:LB:-1, :, :, :)
+     
+  case(2)
+     OUTVAR = VAR(:, UB:LB:-1, :, :)
+     
+  case(3)
+     OUTVAR = VAR(:, :, UB:LB:-1, :)
+  case(4)
+     OUTVAR = VAR(:, :, :, UB:LB:-1)
+     
+  case default
+     print*, 'ERROR: variable dimension cannot be GT 4'
+  end select
+
+  return
+
+end function flip_4Dvariable_dim
