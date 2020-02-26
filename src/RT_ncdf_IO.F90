@@ -51,7 +51,7 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
   ! Auxiliary variables for magnitude conversions:
   integer :: i, NN
   real :: faktor
-  real(kind=8), allocatable, dimension(:,:,:,:) :: U_Vel, V_vel, mixratio
+  real(kind=8), allocatable, dimension(:,:,:,:) :: U_Vel, V_vel, QV
   real, allocatable, dimension(:) :: sigma_hybrid
   
   character(len=69), dimension(NVarIn), parameter :: arome_name = &
@@ -106,10 +106,10 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
   CALL alloc_global_variables
 
   ! For local variables:
-  allocate(sigma_hybrid(nlyr) )
-  allocate(mixratio(ngridx, ngridy, 0:nlyr, ntime) )
-  allocate(U_Vel(ngridx, ngridy, nlyr, ntime) )
-  allocate(V_Vel(ngridx, ngridy, nlyr, ntime) )
+  allocate( sigma_hybrid(nlyr) )
+  allocate( QV(ngridx, ngridy, 0:nlyr, ntime) )
+  allocate( U_Vel(ngridx, ngridy, nlyr, ntime) )
+  allocate( V_Vel(ngridx, ngridy, nlyr, ntime) )
   
   do i = 1, NVarIn
      print*, 'Reading variable: ', trim(arome_name(i) )
@@ -127,7 +127,7 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
         status = nf90_get_var(ncid, VarId, press_tmp(:, :, 0, :) )
         
      case('specific_humidity_2m')
-        status = nf90_get_var(ncid, VarId, mixratio(:, :, 0, :) )
+        status = nf90_get_var(ncid, VarId, QV(:, :, 0, :) )
         
      case('latitude')
         status = nf90_get_var(ncid, VarId, lat, start=(/1,1,1/), count=(/ngridx, ngridy, 1/))
@@ -147,8 +147,8 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
         status = nf90_get_var(ncid, VarId, temp_tmp(:, :, 1:nlyr, :))
         temp_tmp(:, :, 1:nlyr, :) = faktor*temp_tmp(:, :, 1:nlyr, :)
      case('specific_humidity_ml')
-        status = nf90_get_var(ncid, VarId, mixratio(:, :, 1:nlyr, :))
-        mixratio(:, :, 1:nlyr, :) = faktor*mixratio(:, :, 1:nlyr, :)
+        status = nf90_get_var(ncid, VarId, QV(:, :, 1:nlyr, :))
+        QV(:, :, 1:nlyr, :) = faktor*QV(:, :, 1:nlyr, :)
         
      case('mass_fraction_of_cloud_condensed_water_in_air_ml')
         status = nf90_get_var(ncid, VarId, cloud_water_tmp)
@@ -192,13 +192,15 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
   press_tmp = press_tmp*1E-2  ! [hPa]
 
   ! 2) Converting Vapor mixing ratio to Relative Humidity
-  call mixr2rh(ngridx, ngridy, 1+nlyr, ntime,&
-       & mixratio, press_tmp, temp_tmp, relhum_tmp)
-  mixr_tmp = 1E3*mixratio(:, :, 1:nlyr, :)
+  call qv2rh(ngridx, ngridy, 1+nlyr, ntime,&
+       & QV, press_tmp, temp_tmp, relhum_tmp)
+  mixr_tmp = 1E3*QV(:, :, 1:nlyr, :)/(1 - QV(:,:,1:nlyr,:))
 
   ! 3) Converting Wind U and V components to Windspeed and Direction:
-  windvel_tmp(:ngridx, :ngridy, :nlyr, :ntime) = sqrt( U_Vel*U_Vel + V_Vel*V_Vel)
-  winddir_tmp(:ngridx, :ngridy, :nlyr, :ntime) = modulo(360.0 - atan2(U_Vel, V_Vel)*PI2deg, 360.0)
+  call Wind_UV2speeddir(ngridx, ngridy, 1+nlyr, ntime,&
+       & U_Vel, V_Vel, windvel_tmp, winddir_tmp)
+  !windvel_tmp(:ngridx, :ngridy, :nlyr, :ntime) = sqrt( U_Vel*U_Vel + V_Vel*V_Vel)
+  !winddir_tmp(:ngridx, :ngridy, :nlyr, :ntime) = modulo(360.0 - atan2(U_Vel, V_Vel)*PI2deg, 360.0)
 
   ! ****************************
   ! Retrieving Global Attribute:
@@ -212,7 +214,7 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
   ! Closing the NetCDF file
   status = nf90_close(ncid)
   
-  deallocate(sigma_hybrid, U_Vel, V_Vel, mixratio)
+  deallocate(sigma_hybrid, U_Vel, V_Vel, QV)
 
   stop
 
@@ -396,22 +398,8 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   mixr_tmp = 1E3*mixratio(:, :, 1:nlyr, :)
 
   ! 3) Converting Wind U and V components to Windspeed and Direction:
-  windvel_tmp(:ngridx, :ngridy, :nlyr, :ntime) = sqrt( U_Vel*U_Vel + V_Vel*V_Vel)
-  winddir_tmp(:ngridx, :ngridy, :nlyr, :ntime) = modulo(360.0 - atan2(U_Vel, V_Vel)*PI2deg, 360.0)
-
-  !do k=1,mxgridx
-  !   read(TimeStamp(k), '(F4.0X1F2.0X1F2.0X1F2.0)') year(k), month(k), day(k), hour(k)
-  !   write(*,'(A20X4F6.1)') TimeStamp(k), year(k), month(k), day(k), hour(k)
-    
-           !write(*,'(10F9.3)') (windvel_tmp(k,j,5,1), j=1,mxgridy)
-  !enddo
-
-  !  print*, 'Just read Pressure 2m:'
-  ! NN=4
-  !      do k=1,NN
-  !        write(*,'(10F9.3)') (winddir_tmp(k,j,1,2), j=1,NN)
-  !    enddo
-
+  call Wind_UV2speeddir(ngridx, ngridy, nlyr, ntime, &
+       & U_Vel, V_vel, windvel_tmp, winddir_tmp)
 
   ! ****************************
   ! Retrieving Global Attribute:
@@ -1504,6 +1492,14 @@ end subroutine interp1_1D
 ! Calculation formulas for humidity (B210973EN-F)
 ! By (c) VAISALA 2003
 ! https://www.hatchability.com/Vaisala.pdf
+!
+!
+! ---
+! (c) 2019 Pablo Saavedra G.
+! Geophysical Institute, University of Bergen
+! See LICENSE
+!
+! ROUTINE TO CONVERT MIXING RATIO TO RH
 subroutine mixr2rh(nx, ny, nz, nt, MIXR, P, T, RH)
   implicit none
   integer, intent(in) :: nx, ny, nz, nt
@@ -1529,6 +1525,25 @@ subroutine mixr2rh(nx, ny, nz, nt, MIXR, P, T, RH)
   !RH = 100*PW/PWS
   RH = 100*MIXR*P/(MIXR + B)/PWS
 end subroutine mixr2rh
+! ----
+
+! _________________________________________________________________
+! Specific Humidity to Relative Humidity
+subroutine qv2rh(nx, ny, nz, nt, QV, P, T, RH)
+  implicit none
+  integer, intent(in) :: nx, ny, nz, nt
+  real(kind=8), intent(in), dimension(nx,ny,nz,nt) :: QV, P, T
+  real(kind=8), intent(out), dimension(nx,ny,nz,nt) :: RH
+
+  real(kind=8) :: MIXR(nx, ny, nz, nt)
+
+  ! Converting Specific Humidity to Mixing Ratio:
+  MIXR = QV/(1.0 - QV)
+
+  call mixr2rh(nx, ny, nz, nt, MIXR, P, T, RH)
+  return
+end subroutine qv2rh
+! ----
 
 ! -----------------------------------------------------------------
 ! CONVERT perturbation potential temperature (theta-t0)
@@ -1554,4 +1569,23 @@ subroutine PERTHETA2T(nx, ny, nz, nt, Tper, P, T)
   theta = Tper + 300  ! Potential Temperature [K]
   T = theta*(P/P0)**kappa
 end subroutine PERTHETA2T
+! ----
 
+! __________________________________________________________________
+! Subroutine to convert Wind U and V component to wind speed, and direction
+!
+! (c) 2019, Pablo Saavedra G.
+! Geophysical Institute, University of Bonn
+! ---
+subroutine Wind_UV2speeddir(nx, ny, nz, nt, U, V, WS, WD)
+  implicit none
+  integer, intent(in) :: nx, ny ,nz, nt
+  real(kind=8), intent(in), dimension(nx,ny,nz,nt) :: U, V
+  real(kind=8), intent(out), dimension(nx,ny,nz,nt) :: WS, WD
+  real, parameter :: PI2deg = 45.0/atan(1.0)
+  
+  WS = sqrt( U*U + V*V)
+  WD = modulo(360.0 - atan2(U, V)*PI2deg, 360.0)
+  return
+end subroutine Wind_UV2speeddir
+! ----
