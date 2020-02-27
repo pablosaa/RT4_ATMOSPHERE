@@ -154,35 +154,34 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
         status = nf90_get_var(ncid, VarId, sigma_hybrid)
 
      case('air_temperature_ml')
-        status = nf90_get_var(ncid, VarId, temp_tmp(:, :, 1:nlyr, :))
+        status = nf90_get_var(ncid, VarId, temp_tmp(:, :, nlyr:1:-1, :))
         temp_tmp(:, :, 1:nlyr, :) = faktor*temp_tmp(:, :, 1:nlyr, :)
-        temp_tmp = flip_4Dvariable_dim(temp_tmp, dims=3)
 
      case('specific_humidity_ml')
-        status = nf90_get_var(ncid, VarId, QV(:, :, 1:nlyr, :))
+        status = nf90_get_var(ncid, VarId, QV(:, :, nlyr:1:-1, :) )
         QV(:, :, 1:nlyr, :) = faktor*QV(:, :, 1:nlyr, :)
         
      case('mass_fraction_of_cloud_condensed_water_in_air_ml')
-        status = nf90_get_var(ncid, VarId, cloud_water_tmp)
+        status = nf90_get_var(ncid, VarId, cloud_water_tmp(:, :, nlyr:1:-1, :) )
         
      case('mass_fraction_of_rain_in_air_ml')
-        status = nf90_get_var(ncid, VarId, rain_water_tmp)
+        status = nf90_get_var(ncid, VarId, rain_water_tmp(:, :, nlyr:1:-1, :))
         rain_water_tmp = faktor*rain_water_tmp
         
      case('mass_fraction_of_cloud_ice_in_air_ml')
-        status = nf90_get_var(ncid, VarId, cloud_ice_tmp)
+        status = nf90_get_var(ncid, VarId, cloud_ice_tmp(:, :, nlyr:1:-1, :))
      case('mass_fraction_of_snow_in_air_ml')
-        status = nf90_get_var(ncid, VarId, snow_tmp)
+        status = nf90_get_var(ncid, VarId, snow_tmp(:, :, nlyr:1:-1, :))
      case('mass_fraction_of_graupel_in_air_ml')
-        status = nf90_get_var(ncid, VarId, graupel_tmp)
+        status = nf90_get_var(ncid, VarId, graupel_tmp(:, :, nlyr:1:-1, :))
         graupel_tmp = faktor*graupel_tmp
         
      case('x_wind_ml')
-        status = nf90_get_var(ncid, VarId, V_Vel, start=(/1,2,1,1/) )
+        status = nf90_get_var(ncid, VarId, V_Vel(:, :, nlyr:1:-1, :), start=(/1,2,1,1/) )
         V_Vel = faktor*V_Vel
         
      case('y_wind_ml')        
-        status = nf90_get_var(ncid, VarId, U_Vel, start=(/2,1,1,1/) )
+        status = nf90_get_var(ncid, VarId, U_Vel(:, :, nlyr:1:-1, :), start=(/2,1,1,1/) )
         U_Vel = faktor*U_Vel
         
      case('time')
@@ -200,7 +199,7 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
 
   ! 1) Converting sigma_hybrid to pressure levels
   print*, '1. converting sigma to P'
-  do i=1, nlyr
+  do i = nlyr,1 ,-1
      press_tmp(:, :, i, :) = sigma_hybrid(i)*press_tmp(:, :, 0, :)
   end do
 
@@ -216,6 +215,11 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
   mixr_tmp = 1E3*QV(:, :, 1:nlyr, :)
   mixr_tmp = mixr_tmp/(1 - mixr_tmp)
 
+  ! 4) Calculating Geopotential Altitude:
+  call Calculate_GeopotentialZ(ngridx, ngridy, nlyr, ntime,&
+       &temp_tmp, press_tmp, mixr_tmp, hgt_tmp(:,:,1:nlyr,:) )
+
+  print *, 'Z=[',hgt_tmp(9,5,:,1), '];'
   ! 4) Converting Wind U and V components to Windspeed and Direction:
   print *, '4. converting U V to spped dir'
   call Wind_UV2speeddir(ngridx, ngridy, 1+nlyr, ntime,&
@@ -1648,3 +1652,65 @@ function flip_4Dvariable_dim(VAR, dims) result(OUTVAR)
   return
 
 end function flip_4Dvariable_dim
+! -----
+
+! _______________________________________________________________________
+! Subroutine to calculate the Geopotential Height given T, P, MIXR
+!
+! ---
+! (c) 2020, Pablo Saavedra G.
+! Geophysical Institute, University of Bergen
+! See LICENSE
+! -----------------------------------------------------------------------
+subroutine Calculate_GeopotentialZ(NX, NY, NZ, NT, T, P, MIXR, Z) 
+  implicit none
+  integer, intent(in) :: NX, NY, NZ, NT
+  real(kind=8), intent(in), dimension(NX,NY,0:NZ,NT) :: T, P
+  real(kind=8), intent(in), dimension(NX,NY,NZ,NT) :: MIXR
+  real(kind=8), intent(out), dimension(NX,NY,NZ,NT) :: Z
+
+  ! ** local variables
+  integer :: i
+  real(kind=8), allocatable, dimension(:,:,:,:) :: TV, del_P, TVdP
+  real, parameter :: Rd = 287         ! [J/kg/K] dry air gass constant
+  real, parameter :: g0 = 9.807       ! [m/s^2]  gravity constant
+
+
+  allocate(TV(NX, NY, NZ, NT) )
+  call Calculate_VirtualTemperature(NX, NY, NZ, NT, T(:,:,1:NZ,:), MIXR, TV)
+
+  del_P = P(:,:,0:NZ-1,:) - P(:,:,1:NZ,:)
+  ! temporal integrable variable = Tv/P *dP
+  TVdP = TV*del_P/P(:,:,1:NZ,:)
+
+  do i = 1, NZ
+     Z(:,:,i,:) = sum(TVdP(:,:,1:i,:), dim=3)
+  end do
+  Z = (1E-3*Rd/g0)*Z  ! converting to [km]
+
+  return
+end subroutine Calculate_GeopotentialZ
+! -----
+
+! _______________________________________________________________________
+! Subroutine to calculate the Virtual Temperature given T, MIXR
+!
+! ---
+! (c) 2020, Pablo Saavedra G.
+! Geophysical Institute, University of Bergen
+! See LICENSE
+! -----------------------------------------------------------------------
+subroutine Calculate_VirtualTemperature(NX, NY, NZ, NT, T, MIXR, TV)
+  implicit none
+  integer, intent(in) :: NX, NY, NZ, NT
+  real(kind=8), intent(in), dimension(NX, NY, NZ, NT) :: T, MIXR
+  real(kind=8), intent(out), dimension(NX, NY, NZ, NT) :: TV
+
+  ! ** local variables
+  ! Rd gas constant dry air, Rv gas constant water vapour:
+  real, parameter :: Rd = 287, Rv = 461.5  ! [J/kg/K]
+  real, parameter :: eps = Rd/Rv
+
+  TV = T*(1.d0 + MIXR/eps)/(1.d0 + MIXR)
+  return
+end subroutine Calculate_VirtualTemperature
