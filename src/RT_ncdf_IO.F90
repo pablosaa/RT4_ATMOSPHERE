@@ -59,7 +59,7 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
   character(len=30) :: varname
   character(len=10) :: dim_name
   ! Auxiliary variables for magnitude conversions:
-  integer :: i, NN
+  integer :: i, N_tempX, N_tempY
   real :: faktor
   real(kind=8), allocatable, dimension(:,:,:,:) :: U_Vel, V_vel, QV
   real, allocatable, dimension(:) :: sigma_hybrid
@@ -99,9 +99,9 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
      call check_nc(status)
      select case(trim(dim_name) )
      case('x')
-        ngridx = dim_len
+        N_tempX = dim_len !ngridx 
      case('y')
-        ngridy = dim_len
+        N_tempY = dim_len ! ngridy
      case('hybrid')
         nlyr = dim_len
      case('time')
@@ -111,6 +111,15 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
      end select     
   end do
 
+  ! PSG: Checking if customized grid size has been given in 'input'
+  if(nx_in.EQ.0) nx_in = 1
+  if(nx_fin.EQ.0) nx_fin = N_tempX !ngridx
+  if(ny_in.EQ.0) ny_in = 1
+  if(ny_fin.EQ.0) ny_fin = N_tempY !ngridy
+
+  ngridx = nx_fin - nx_in +1
+  ngridy = ny_fin - ny_in +1
+  
   ! Allocate global variables according to dimensions:
   CALL alloc_global_variables
 
@@ -127,23 +136,26 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
 
      status = nf90_get_att(ncid, VarId, 'scale_factor', faktor)
      if(status.NE.NF90_NOERR) faktor = 1.
-     
+
      select case(trim(arome_name(i) ))
         ! *** Reading for WRF SURFACE variables:
      case('air_temperature_2m')
-        status = nf90_get_var(ncid, VarId, temp_tmp(:, :, 0, :) )
-        
+        status = nf90_get_var(ncid, VarId, temp_tmp(:, :, 0:0, :), &
+             & start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, 1, ntime/) )
+
      case('surface_air_pressure')
-        status = nf90_get_var(ncid, VarId, press_tmp(:, :, 0, :) )
-        
+        status = nf90_get_var(ncid, VarId, press_tmp(:, :, 0:0, :), &
+             & start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, 1, ntime/) )
+
      case('specific_humidity_2m')
-        status = nf90_get_var(ncid, VarId, QV(:, :, 0, :) )
+        status = nf90_get_var(ncid, VarId, QV(:, :, 0:0, :), &
+             & start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, 1, ntime/) )
         
      case('latitude')
-        status = nf90_get_var(ncid, VarId, lat, start=(/1,1,1/), count=(/ngridx, ngridy, 1/))
+        status = nf90_get_var(ncid, VarId, lat, start=(/nx_in, ny_in, 1/), count=(/ngridx, ngridy, 1/))
         
      case('longitude')
-        status = nf90_get_var(ncid, VarId, lon, start=(/1,1,1/), count=(/ngridx, ngridy, 1/))
+        status = nf90_get_var(ncid, VarId, lon, start=(/nx_in, ny_in, 1/), count=(/ngridx, ngridy, 1/))
         
         ! *** Reading for WRF PROFILE variables:
      case('PHB') ! ???
@@ -151,46 +163,54 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
         hgt_tmp = 1.0E-3*hgt_tmp/9.81  ! [km]
         
      case('hybrid') ! adapt from sigma to pressure levels
-        status = nf90_get_var(ncid, VarId, sigma_hybrid)
+        status = nf90_get_var(ncid, VarId, sigma_hybrid, start=(/1/), count=(/nlyr/))
 
      case('air_temperature_ml')
-        status = nf90_get_var(ncid, VarId, temp_tmp(:, :, nlyr:1:-1, :))
+        status = nf90_get_var(ncid, VarId, temp_tmp(:, :, nlyr:1:-1, :), &
+             & start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, nlyr, ntime/))
         temp_tmp(:, :, 1:nlyr, :) = faktor*temp_tmp(:, :, 1:nlyr, :)
 
      case('specific_humidity_ml')
-        status = nf90_get_var(ncid, VarId, QV(:, :, nlyr:1:-1, :) )
+        status = nf90_get_var(ncid, VarId, QV(:, :, nlyr:1:-1, :), &
+             & start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, nlyr, ntime/) )
         QV(:, :, 1:nlyr, :) = faktor*QV(:, :, 1:nlyr, :)
         
      case('mass_fraction_of_cloud_condensed_water_in_air_ml')
-        status = nf90_get_var(ncid, VarId, cloud_water_tmp(:, :, nlyr:1:-1, :) )
+        status = nf90_get_var(ncid, VarId, cloud_water_tmp(:, :, nlyr:1:-1, :), &
+             & start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, nlyr, ntime/) )
         
      case('mass_fraction_of_rain_in_air_ml')
-        status = nf90_get_var(ncid, VarId, rain_water_tmp(:, :, nlyr:1:-1, :))
+        status = nf90_get_var(ncid, VarId, rain_water_tmp(:, :, nlyr:1:-1, :), &
+             & start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, nlyr, ntime/) )
         rain_water_tmp = faktor*rain_water_tmp
         
      case('mass_fraction_of_cloud_ice_in_air_ml')
-        status = nf90_get_var(ncid, VarId, cloud_ice_tmp(:, :, nlyr:1:-1, :))
+        status = nf90_get_var(ncid, VarId, cloud_ice_tmp(:, :, nlyr:1:-1, :), &
+             & start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, nlyr, ntime/) )
      case('mass_fraction_of_snow_in_air_ml')
-        status = nf90_get_var(ncid, VarId, snow_tmp(:, :, nlyr:1:-1, :))
+        status = nf90_get_var(ncid, VarId, snow_tmp(:, :, nlyr:1:-1, :), &
+             & start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, nlyr, ntime/) )
      case('mass_fraction_of_graupel_in_air_ml')
-        status = nf90_get_var(ncid, VarId, graupel_tmp(:, :, nlyr:1:-1, :))
+        status = nf90_get_var(ncid, VarId, graupel_tmp(:, :, nlyr:1:-1, :), &
+             & start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, nlyr, ntime/) )
         graupel_tmp = faktor*graupel_tmp
         
      case('x_wind_ml')
-        status = nf90_get_var(ncid, VarId, V_Vel(:, :, nlyr:1:-1, :), start=(/1,2,1,1/) )
+        status = nf90_get_var(ncid, VarId, V_Vel(:, :, nlyr:1:-1, :), &
+             & start=(/nx_in, ny_in+1 , 1, 1/), count=(/ngridx, ngridy, nlyr, ntime/) )
         V_Vel = faktor*V_Vel
         
      case('y_wind_ml')        
-        status = nf90_get_var(ncid, VarId, U_Vel(:, :, nlyr:1:-1, :), start=(/2,1,1,1/) )
+        status = nf90_get_var(ncid, VarId, U_Vel(:, :, nlyr:1:-1, :), &
+             & start=(/nx_in+1, ny_in , 1, 1/), count=(/ngridx, ngridy, nlyr, ntime/))
         U_Vel = faktor*U_Vel
         
      case('time')
-        status = nf90_get_var(ncid, VarId, TimeStamp)
+        status = nf90_get_var(ncid, VarId, TimeStamp, start=(/1/), count=(/ntime/) )
         
      case('atmosphere_boundary_layer_thickness')
-        ! not yet implemented
-     case('QXI')
-        qidx = 15
+        ! status = nf90_get_var(ncid, VarId, BLH, &
+        ! & start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, 1, ntime/) )
         
      case default
         print*, 'WARNING: WRF variable ', trim(arome_name(i)),' not recognized.'
@@ -203,8 +223,8 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
      press_tmp(:, :, nlyr-i+1, :) = sigma_hybrid(i)*press_tmp(:, :, 0, :)
   end do
 
-  press_tmp = press_tmp*1E-2  ! [hPa]
-
+  press_tmp = press_tmp*1.0E-2  ! [hPa]
+  
   ! 2) Converting vapour mixing ratio to Relative Humidity
   print *, '2. converting Qv to RH'
   call qv2rh(ngridx, ngridy, 1+nlyr, ntime,&
@@ -212,35 +232,33 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
 
   ! 3) Converting specific humidity to vapour mixing ratio
   print *, '3. converting Qv to mixr'
-  mixr_tmp = 1E3*QV(:, :, 1:nlyr, :)
-  mixr_tmp = mixr_tmp/(1 - mixr_tmp)
+  mixr_tmp = QV(:,:,1:nlyr,:)/(1.d0 - QV(:,:,1:nlyr,:))
 
   ! 4) Calculating Geopotential Altitude:
   call Calculate_GeopotentialZ(ngridx, ngridy, nlyr, ntime,&
        &temp_tmp, press_tmp, mixr_tmp, hgt_tmp(:,:,1:nlyr,:) )
 
-  print *, 'Z=[',hgt_tmp(9,5,:,1), '];'
-  ! 4) Converting Wind U and V components to Windspeed and Direction:
-  print *, '4. converting U V to spped dir'
-  call Wind_UV2speeddir(ngridx, ngridy, 1+nlyr, ntime,&
+  ! 5) Converting Wind U and V components to Windspeed and Direction:
+  print *, '5. converting U V to speed dir'
+  call Wind_UV2speeddir(ngridx, ngridy, nlyr, ntime,&
        & U_Vel, V_Vel, windvel_tmp, winddir_tmp)
+
+  qidx = 15
+  del_xy = 2.5  ! [km]
 
   ! ****************************
   ! Retrieving Global Attribute:
-  !status = nf90_get_att(ncid,NF90_GLOBAL, 'DX', del_xy(1))
-  !status = nf90_get_att(ncid,NF90_GLOBAL, 'DY', del_xy(2))
-  del_xy = 2.5  ! [km]
   status = nf90_get_att(ncid,NF90_GLOBAL, 'title', varname)
   write(origin_str,'(A)')  trim(varname)//'->'//trim(ncfile)
   
   ! ****************************
   ! Closing the NetCDF file
   status = nf90_close(ncid)
-  
-  deallocate(sigma_hybrid, U_Vel, V_Vel, QV)
 
-  stop
+  deallocate(sigma_hybrid, U_Vel, V_Vel, QV, stat=status)
+  if(status/=0) stop 'AROME, something wrong with deallocation?'
 
+  return
 end subroutine read_arome
 ! --------------------------------------------------------------------------------------
 
@@ -364,11 +382,11 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
      select case(trim(wrfvarname(i) ))
         ! *** Reading for WRF SURFACE variables:
      case('T2')
-        status = nf90_get_var(ncid, VarId, temp_tmp(:, :, 0, :))
+        status = nf90_get_var(ncid, VarId, temp_tmp(:, :, 0:0, :))
      case('PSFC')
-        status = nf90_get_var(ncid, VarId, press_tmp(:, :, 0, :))
+        status = nf90_get_var(ncid, VarId, press_tmp(:, :, 0:0, :))
      case('Q2')
-        status = nf90_get_var(ncid, VarId, mixratio(:, :, 0, :))
+        status = nf90_get_var(ncid, VarId, mixratio(:, :, 0:0, :))
      case('XLAT')
         status = nf90_get_var(ncid, VarId, lat, start=(/1,1,1/), count=(/ngridx, ngridy, 1/))
      case('XLONG')
@@ -1657,6 +1675,13 @@ end function flip_4Dvariable_dim
 ! _______________________________________________________________________
 ! Subroutine to calculate the Geopotential Height given T, P, MIXR
 !
+! - INPUT:
+! * T(NX, NY, 0:NZ, NT)  : Temperature [K]
+! * P(NX, NY, 0:NZ, NT)  : Pressure [hPa]
+! * MIXR(NX, NY, NZ, NT) : Mixing ration [kg/kg]
+! - OUTPUT:
+! * Z(NX, NY, NZ, NT)    : Geopotential Height [km] 
+!
 ! ---
 ! (c) 2020, Pablo Saavedra G.
 ! Geophysical Institute, University of Bergen
@@ -1679,7 +1704,9 @@ subroutine Calculate_GeopotentialZ(NX, NY, NZ, NT, T, P, MIXR, Z)
   allocate(TV(NX, NY, NZ, NT) )
   call Calculate_VirtualTemperature(NX, NY, NZ, NT, T(:,:,1:NZ,:), MIXR, TV)
 
+  
   del_P = P(:,:,0:NZ-1,:) - P(:,:,1:NZ,:)
+
   ! temporal integrable variable = Tv/P *dP
   TVdP = TV*del_P/P(:,:,1:NZ,:)
 
@@ -1694,6 +1721,12 @@ end subroutine Calculate_GeopotentialZ
 
 ! _______________________________________________________________________
 ! Subroutine to calculate the Virtual Temperature given T, MIXR
+!
+! - INPUT:
+! * T(NX, NY, NZ, NT)    : Temperature [K]
+! * MIXR(NX, NY, NZ, NT) : Mixing ration [kg/kg]
+! - OUTPUT:
+! * Tv(NX, NY, NZ, NT)   : Virtual Temperature [K] 
 !
 ! ---
 ! (c) 2020, Pablo Saavedra G.

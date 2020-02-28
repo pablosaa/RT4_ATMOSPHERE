@@ -210,7 +210,6 @@ C     !PSG: Following temporal varaibles is to include NetCDF time depending
        namelist/inputobs/elevations
        
        integer istatus
-       integer NXtot, NYtot, nx_idx, ny_idx
        
 C     !PSG: -- end of definition for NetCDF temporal variables
 
@@ -304,12 +303,12 @@ C     !PSG: Calling the NetCDF routine to read data
         case default
            STOP 'wrong input_type! support: wrf, arome or wyors'
         end select
-        stop
+
         ! PSG: Checking if customized grid size has been given in 'input'
-        if(nx_in.EQ.0) nx_in = 1
-        if(nx_fin.EQ.0) nx_fin = ngridx
-        if(ny_in.EQ.0) ny_in = 1
-        if(ny_fin.EQ.0) ny_fin = ngridy
+c$$$        if(nx_in.EQ.0) nx_in = 1
+c$$$        if(nx_fin.EQ.0) nx_fin = ngridx
+c$$$        if(ny_in.EQ.0) ny_in = 1
+c$$$        if(ny_fin.EQ.0) ny_fin = ngridy
         if(n_freq.LT.1.OR.n_freq.GT.20) then
            write(*,*) 'Input variable n_freq out of bounds!'
            write(*,*) 'n_freq needs to be >1 and max 20'
@@ -364,16 +363,17 @@ C     NetCDF output file definition (creating one Ncdf file per frequency):
         write(*,*) 'Creating NetCDF '//trim(NCDFOUT)
         write(*,*) 'ntime=',ntime,'; nlayer=',nlyr,'; nfreq=',n_freq
 
-        NXtot = nx_fin - nx_in + 1 ! PSG: temporal solution
-        NYtot = ny_fin - ny_in + 1 ! PSG: temporal solution
+c$$$        NXtot = nx_fin - nx_in + 1 ! PSG: temporal solution
+c$$$        NYtot = ny_fin - ny_in + 1 ! PSG: temporal solution
         call createncdf(len_trim(NCDFOUT), trim(NCDFOUT),
      $       NUMMU, n_freq, NSTOKES, nlyr,
-     $       NXtot, NYtot, hgt_tmp(nx_in,ny_in,1:nlyr,1),
+     $       ngridx, ngridy, hgt_tmp(nx_in,ny_in,1:nlyr,1),
      $       FREQ(1:n_freq), input_file, micro_str,
      $       real(hgt_tmp(nx_in:nx_fin, ny_in:ny_fin,0,1),4),
      $       lat(nx_in:nx_fin, ny_in:ny_fin),
      $       lon(nx_in:nx_fin, ny_in:ny_fin), trim(origin_str) )
 
+        print*, 'After creating netcdf'
         allocate(LYR_TEMP(0:nlyr), LYR_PRES(0:nlyr),
      $       REL_HUM(nlyr), KEXTATMO(nlyr),
      $       AVGPRESSURE(nlyr), VAPORPRESSURE(nlyr) )
@@ -400,7 +400,6 @@ C     NetCDF output file definition (creating one Ncdf file per frequency):
         allocate(temp_lev(ngridx,ngridy,0:nlyr))
         allocate(relhum_lev(ngridx,ngridy,0:nlyr))
 
-
 C     !PSG: -- end of NetCDF reading routine
         do 777 ifreq=1,n_freq   ! PSG: include Frequency loop
            if (freq(ifreq).gt.100.d0) then
@@ -418,10 +417,10 @@ c     write(*,29) frq_str
 !$OMP DO
            
            
-           do 656 nx = nx_in, nx_fin ! 1, ngridx
+           do 656 nx = 1, ngridx !nx_in, nx_fin 
               write(xstr,'(i3.3)') nx
                    
-              do 656 ny = ny_in, ny_fin  ! 1, ngridy
+              do 656 ny = 1, ngridy  !ny_in, ny_fin 
                  write(ystr,'(i3.3)') ny
 
 C     !PSG: Passing temporal variables to old variables (no time)
@@ -567,10 +566,10 @@ c$$$     $ SD_grau//N0graustr//EM_grau//SD_rain//N0rainstr
             !!write(month,'(I2.2)') int(mm(nx,ny, timeidx))
             !!write(day,'(I2.2)') int(dd(nx,ny, timeidx))
             !!write(hour,'(I2.2)') int(hh(nx,ny, timeidx))
-            year = TimeStamp(timeidx)(3:4)
-            month = TimeStamp(timeidx)(6:7)
-            day = TimeStamp(timeidx)(9:10)
-            hour = TimeStamp(timeidx)(12:13)
+            year = '20' !TimeStamp(timeidx)(3:4)
+            month = '02' !TimeStamp(timeidx)(6:7)
+            day = '28' !TimeStamp(timeidx)(9:10)
+            hour = '00' !TimeStamp(timeidx)(12:13)
             
             date_str=year//month//day//hour 
 c   computing the refractive index of the sea surface
@@ -1062,10 +1061,10 @@ C       write(*,*) 'entra a '//FILE_profile//' com outlevels=',OUTLEVELS   ! PSG
      .                    NOUTLEVELS, OUTLEVELS,NUMAZIMUTHS,i_time)
 
 
-       ny_idx = ny - ny_in + 1  ! PSG: temporal solution
-       nx_idx = nx - nx_in + 1  ! PSG: temporal solution
-       call MP_storencdf(NCDFOUT,i_time,ifreq,ny_idx,nx_idx,
-     $      NLYR,hgt_lev(nx,ny,0:NLYR),
+c$$$       ny_idx = ny - ny_in + 1  ! PSG: temporal solution
+c$$$       nx_idx = nx - nx_in + 1  ! PSG: temporal solution
+       call MP_storencdf(NCDFOUT, i_time, ifreq, ny, nx,
+     $      NLYR, hgt_lev(nx,ny,0:NLYR),
      $      temp_lev(nx,ny,0:NLYR), press_lev(nx,ny,0:NLYR),
      $      relhum_lev(nx,ny,1:NLYR), rho_vap(nx,ny,:),
      $      cloud_water(nx,ny,:),
