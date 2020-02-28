@@ -199,14 +199,14 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
 
   ! 1) Converting sigma_hybrid to pressure levels
   print*, '1. converting sigma to P'
-  do i = nlyr,1 ,-1
-     press_tmp(:, :, i, :) = sigma_hybrid(i)*press_tmp(:, :, 0, :)
+  do i = 1, nlyr
+     press_tmp(:, :, nlyr-i+1, :) = sigma_hybrid(i)*press_tmp(:, :, 0, :)
   end do
 
   press_tmp = press_tmp*1E-2  ! [hPa]
 
   ! 2) Converting vapour mixing ratio to Relative Humidity
-  print *, '2. converting Qv to RG'
+  print *, '2. converting Qv to RH'
   call qv2rh(ngridx, ngridy, 1+nlyr, ntime,&
        & QV, press_tmp, temp_tmp, relhum_tmp)
 
@@ -414,7 +414,7 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   ! 1) Converting Perturbation Potential Temperature to Temperature:
   call PERTHETA2T(ngridx, ngridy, nlyr, ntime, temp_tmp(:, :, 1:nlyr, :),&
        & press_tmp(:, :, 1:nlyr, :), temp_tmp(:, :, 1:nlyr, :) )
-
+  
   ! 2) Converting Vapor mixing ratio to Relative Humidity
   call mixr2rh(ngridx, ngridy, 1+nlyr, ntime,&
        & mixratio, press_tmp, temp_tmp, relhum_tmp)
