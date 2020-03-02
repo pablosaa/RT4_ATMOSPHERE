@@ -13,6 +13,104 @@
 ! SEE LICENSE.TXT
 ! --------------------------------------------------------------------------------------
 
+module nctoys
+  public
+  type ncname
+     character(len=15), allocatable, dimension(:) :: vars
+     character(len=15), allocatable, dimension(:) :: dims
+  end type ncname
+contains
+
+  subroutine get_dims_allocate_vars(ncid, names)
+    use netcdf
+    use variables, only : nx_in, nx_fin, ny_in, ny_fin, ngridx, ngridy, nlyr, ntime
+    implicit none
+    integer, intent(in) :: ncid
+    type(ncname), intent(in) :: names
+    ! local variables:
+    integer :: i, status, dim_id, dim_len
+    
+    do i = 1, size(names%dims)
+       status = nf90_inq_dimid(ncid, trim(names%dims(i)), dim_id)
+       call check_nc(status, 'dimension name does not exist!', .TRUE.)
+       status = nf90_inquire_dimension(ncid, dim_id, len = dim_len )     
+       call check_nc(status, 'not possible to retrieve dimensions', .TRUE.)
+
+       select case(i)
+       case(1)
+          if(nx_in.EQ.0) nx_in = 1
+          if(nx_fin.EQ.0) nx_fin = dim_len
+       case(2)
+          if(ny_in.EQ.0) ny_in = 1
+          if(ny_fin.EQ.0) ny_fin = dim_len
+       case(3)
+          nlyr = dim_len
+       case(4)
+          ntime = dim_len
+       case default
+          print*, 'netCDF dimension '//trim(names%dims(i))//' unused!'
+       end select
+    end do
+    ngridx = nx_fin - nx_in +1
+    ngridy = ny_fin - ny_in +1
+
+    ! Allocate global variables according to dimensions:
+    CALL allocate_RT3_variables
+
+  end subroutine get_dims_allocate_vars
+
+  subroutine check_nc(status, message, FLAG)
+    use netcdf
+    implicit none
+    integer, intent(in) :: status
+    character(len=*), optional, intent(in) :: message
+    logical, optional, intent(in) :: FLAG
+    if(status.EQ.NF90_NOERR) return
+    ! Ups... get this point cause error happened?
+    print *, NF90_STRERROR(status)
+  
+    if(present(message) ) print*, message
+    if(present(FLAG) ) stop
+    return
+  end subroutine check_nc
+
+  subroutine MyUnixTime(datum, unixtime)
+    use, intrinsic :: iso_c_binding
+
+    implicit none
+    ! Interface to the C code for Unix time retrieval:
+    interface
+       function F2UnixTime(datum, ntime) result(val) bind(c, name='F2UnixTime')
+         use, intrinsic :: iso_c_binding
+         integer(kind=c_int) :: ntime
+         integer(kind=c_int) :: datum(:,:)
+         real(kind=c_double) :: val
+       end function F2UnixTime
+    end interface
+    integer, intent(inout) :: datum(:,:)
+    real(kind=8), intent(inout) :: unixtime
+
+    integer :: ntime
+    ntime = size(datum,1)
+    unixtime = F2UnixTime(datum, ntime)
+    return
+    
+  end subroutine MyUnixTime
+
+  subroutine mykakes(A,B)
+    implicit none
+    real, intent(in), dimension(:,:) :: A
+    real, intent(out), dimension(:) :: B
+    integer :: i,j,k
+
+    i=size(A,1)
+    j=size(A,2)
+
+    B = reshape(A, (/i*j/))
+    return
+  end subroutine mykakes
+
+end module nctoys
 
 ! ______________________________________________________________________________________
 ! --------------------------------------------------------------------------------------
@@ -25,24 +123,9 @@
 subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
   use netcdf
   use variables
+  use nctoys
 
   implicit none
-  interface
-     subroutine check_nc(status, message, FLAG)
-       implicit none
-       integer, intent(in) :: status
-       character(len=*), optional, intent(in) :: message
-       logical, optional, intent(in) :: FLAG
-     end subroutine check_nc
-
-     function flip_4Dvariable_dim(VAR, dims) result(OUTVAR)
-       implicit none
-       integer, intent(in) :: dims
-       real(kind=8), intent(in) :: VAR(:,:,:,:) !
-       real(kind=8), allocatable :: OUTVAR(:,:,:,:)
-     end function flip_4Dvariable_dim
-
-  end interface
 
   integer, intent(in) :: ncflen
   character(len=ncflen), intent(in) :: ncfile
@@ -84,6 +167,8 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
        & 'y_wind_ml', &
        & 'time']
 
+  type(ncname) :: aromename
+
   ! -----------------------------------------------------------------------------
   ! Open file and read directory
   print*,'AROME-Arctic netCDF input files is : ', trim(ncfile)
@@ -91,39 +176,19 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
   status = nf90_open(ncfile,NF90_NOWRITE,ncid)
   call check_nc(status, 'Cannot open AROME netCDF-file '//trim(ncfile), .TRUE.)
 
-  status = nf90_inquire(ncid, ndims_in, nvars_in, ngatts_in, unlimdimid_in)
-  call check_nc(status, 'Inquiring dimensions for AROME', .TRUE.)
 
-  do i=1, ndims_in
-     status = nf90_inquire_dimension(ncid, i, dim_name, dim_len )
-     call check_nc(status)
-     select case(trim(dim_name) )
-     case('x')
-        N_tempX = dim_len !ngridx 
-     case('y')
-        N_tempY = dim_len ! ngridy
-     case('hybrid')
-        nlyr = dim_len
-     case('time')
-        ntime = dim_len
-     case default
-        print*, 'netCDF dimension '//trim(dim_name)//' unused!'
-     end select     
-  end do
+  aromename%dims = [ character(len=6):: &
+       & 'x', &
+       & 'y', &
+       & 'hybrid', &
+       & 'time']
 
-  ! PSG: Checking if customized grid size has been given in 'input'
-  if(nx_in.EQ.0) nx_in = 1
-  if(nx_fin.EQ.0) nx_fin = N_tempX !ngridx
-  if(ny_in.EQ.0) ny_in = 1
-  if(ny_fin.EQ.0) ny_fin = N_tempY !ngridy
 
-  ngridx = nx_fin - nx_in +1
-  ngridy = ny_fin - ny_in +1
-  
-  ! Allocate global variables according to dimensions:
-  CALL alloc_global_variables
+  ! Obtain dimensions and allocate RT variables:
+  CALL get_dims_allocate_vars(ncid, aromename)
 
-  ! For local variables:
+
+  ! Allocation For local/temporal variables:
   allocate( sigma_hybrid(nlyr) )
   allocate( QV(ngridx, ngridy, 0:nlyr, ntime) )
   allocate( U_Vel(ngridx, ngridy, nlyr, ntime) )
@@ -156,11 +221,6 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
         
      case('longitude')
         status = nf90_get_var(ncid, VarId, lon, start=(/nx_in, ny_in, 1/), count=(/ngridx, ngridy, 1/))
-        
-        ! *** Reading for WRF PROFILE variables:
-     case('PHB') ! ???
-        status = nf90_get_var(ncid, VarId, hgt_tmp)
-        hgt_tmp = 1.0E-3*hgt_tmp/9.81  ! [km]
         
      case('hybrid') ! adapt from sigma to pressure levels
         status = nf90_get_var(ncid, VarId, sigma_hybrid, start=(/1/), count=(/nlyr/))
@@ -206,7 +266,7 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
         U_Vel = faktor*U_Vel
         
      case('time')
-        status = nf90_get_var(ncid, VarId, TimeStamp, start=(/1/), count=(/ntime/) )
+        status = nf90_get_var(ncid, VarId, UnixTime, start=(/1/), count=(/ntime/) )
         
      case('atmosphere_boundary_layer_thickness')
         ! status = nf90_get_var(ncid, VarId, BLH, &
@@ -262,21 +322,6 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
 end subroutine read_arome
 ! --------------------------------------------------------------------------------------
 
-subroutine check_nc(status, message, FLAG)
-  use netcdf
-  implicit none
-  integer, intent(in) :: status
-  character(len=*), optional, intent(in) :: message
-  logical, optional, intent(in) :: FLAG
-  if(status.EQ.NF90_NOERR) return
-  ! Ups... error happened?
-  print *, NF90_STRERROR(status)
-  
-  if(present(message) ) print*, message
-  if(present(FLAG) ) stop
-  return
-end subroutine check_nc
-
 ! ______________________________________________________________________________________
 ! --------------------------------------------------------------------------------------
 ! Subroutine to read WRF simulation outputs from NetCDF-file generated by standard
@@ -288,6 +333,7 @@ end subroutine check_nc
 subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   use netcdf
   use variables
+  use nctoys
   
   implicit none
 
@@ -308,8 +354,9 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   integer :: i, j, k, NN
   
   real(kind=8), allocatable, dimension(:,:,:,:) :: U_Vel, V_Vel, mixratio
+  character(len=:), allocatable, dimension(:) :: TimeStamp
   ! List of variable names to load (WRF convention)
-  character(len=15), dimension(18), parameter :: wrfvarname = [ &
+  character(len=15), dimension(17), parameter :: wrfvarname = [ &
        &character(len=15):: &
        & 'T2', &
        & 'PSFC', &
@@ -327,58 +374,67 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
        & 'QGRAUP', &
        & 'V', &
        & 'U', &
-       & 'Times', &
-       & 'QXI' ]
-  
+       & 'Times']
+
+  type(ncname) :: wrfname
   ! -----------------------------------------------------------------------------
   ! Open file and read directory
   print*,'WRF netCDF input files is', ncflen, ' : ', trim(ncfile)
   
-  status = nf90_open(ncfile,NF90_NOWRITE,ncid)
-  if(status.ne.0) then
-     print*, 'Cannot open netCDF-file: '//trim(ncfile)
-     stop
-  end if
-  status = nf90_inquire(ncid, ndims_in, nvars_in, ngatts_in, unlimdimid_in)
-  ! Get ID of unlimited dimension
+  status = nf90_open(ncfile, NF90_NOWRITE, ncid)
+  call check_nc(status, 'Cannot open netCDF-file: '//trim(ncfile), .true.)
 
-  do i=1, ndims_in
-     ! assigning dimension name and length:
-     status = nf90_inquire_dimension(ncid, i, dim_name, dim_len)
-     select case(trim(dim_name) )
-     case('west_east')
-        ngridx = dim_len
-     case('south_north')
-        ngridy = dim_len
-     case('bottom_top')
-        nlyr = dim_len
-     case('Time')
-        ntime = dim_len
-     case('DateStrLen')
-        NN = dim_len
-     case default
-        print*, 'netCDF file dimension '//trim(dim_name)//' unknown!'
-        ! stop
-     end select
-  end do
-  allocate( character(len=NN) :: TimeStamp(ntime) )
-  
-  call alloc_global_variables
+  ! Defining dimension names in WRF netCDF file:
+  wrfname%dims = [ character(len=11):: &
+       & 'west_east', &
+       & 'south_north', &
+       & 'bottom_top', &
+       & 'Time']
+
+
+  ! Obtain dimensions and allocate RT variables:
+  CALL get_dims_allocate_vars(ncid, wrfname)
+
+
+!!$  status = nf90_inquire(ncid, ndims_in, nvars_in, ngatts_in, unlimdimid_in)
+!!$  ! Get ID of unlimited dimension
+!!$
+!!$  do i=1, ndims_in
+!!$     ! assigning dimension name and length:
+!!$     status = nf90_inquire_dimension(ncid, i, dim_name, dim_len)
+!!$     select case(trim(dim_name) )
+!!$     case('west_east')
+!!$        ngridx = dim_len
+!!$     case('south_north')
+!!$        ngridy = dim_len
+!!$     case('bottom_top')
+!!$        nlyr = dim_len
+!!$     case('Time')
+!!$        ntime = dim_len
+!!$     case('DateStrLen')
+!!$        NN = dim_len
+!!$     case default
+!!$        print*, 'netCDF file dimension '//trim(dim_name)//' unknown!'
+!!$        ! stop
+!!$     end select
+!!$  end do
+!!$  allocate( character(len=NN) :: TimeStamp(ntime) )
+!!$  
+!!$  call allocate_RT3_variables
   
   ! For local variables:
   allocate(mixratio(ngridx, ngridy, 0:nlyr, ntime) )
   allocate(U_Vel(ngridx, ngridy, nlyr, ntime) )
   allocate(V_Vel(ngridx, ngridy, nlyr, ntime) )
-
+  allocate(character(len=18) :: TimeStamp(ntime) )
+  
   qidx = 15
 
   ! loop over all variables needed from WRF netCDF file
   do i=1, size(wrfvarname)
      status = nf90_inq_varid(ncid, trim(wrfvarname(i) ), VarId)
-     if(status /= nf90_NoErr) then
-        print*, 'WARNING: variable ',trim(wrfvarname(i)),' cannot be read: ', nf90_strerror(status)
-        cycle
-     end if
+     call check_nc(status, 'Variable '//trim(wrfvarname(i))//' cannot be read.', .true.)
+
      select case(trim(wrfvarname(i) ))
         ! *** Reading for WRF SURFACE variables:
      case('T2')
@@ -418,9 +474,7 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
         status = nf90_get_var(ncid, VarId, U_Vel, start=(/2,1,1,1/) )
      case('Times')
         status = nf90_get_var(ncid, VarId, TimeStamp)
-     case('QXI')
-        status = nf90_get_var(ncid, VarId, qidx)
-        print*, 'QXI assigned?!?!?'
+
      case default
         print*, 'WARNING: WRF variable ', trim(varname),' not recognized.'
      end select
@@ -442,6 +496,10 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   call Wind_UV2speeddir(ngridx, ngridy, nlyr, ntime, &
        & U_Vel, V_vel, windvel_tmp, winddir_tmp)
 
+  ! 4) Converting TimeStamp to Vector Date variable:
+  !!! read(TimeStamp, '(I04XI02XI02XI02XI02XI02)') UnixTime
+  
+  
   ! ****************************
   ! Retrieving Global Attribute:
   status = nf90_get_att(ncid,NF90_GLOBAL, 'DX', del_xy(1))
@@ -452,8 +510,9 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   ! ****************************
   ! Closing the NetCDF file
   status = nf90_close(ncid)
+  call check_nc(status)
   
-  deallocate(U_Vel, V_Vel, mixratio)
+  deallocate(U_Vel, V_Vel, mixratio, TimeStamp)
   
   return
 end subroutine read_wrf
@@ -1028,15 +1087,17 @@ end subroutine createncdf
 subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,time_len)
   use netcdf
   use variables, only : nx_in, nx_fin, ny_in, ny_fin, timeidx, nx, ny
+  use nctoys
   use, intrinsic :: iso_c_binding
   
   implicit none
 
   ! Interface to the C code for Unix time retrieval:
   interface
-     function F2UnixTime(datum) result(val) bind(c, name='F2UnixTime')
+     function F2UnixTime(datum, ntime) result(val) bind(c, name='F2UnixTime')
        use, intrinsic :: iso_c_binding
-       integer(kind=c_int) :: datum(6)
+       integer(kind=c_int) :: ntime
+       integer(kind=c_int) :: datum(:,:)
        real(kind=c_double) :: val
      end function F2UnixTime
   end interface
@@ -1057,7 +1118,7 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   real(kind=8), allocatable, dimension(:,:,:,:) :: TB_THTA
   real(kind=8), allocatable, dimension(:) :: elevations, elvmu
   real(kind=c_double) :: TIMELINE
-  integer(kind=c_int) :: date(6)
+  integer(kind=c_int) :: date(1,6)
   real(kind=8), parameter :: PI = 4.0*atan(1.0)
   integer :: nelv, NANG
   
@@ -1083,9 +1144,9 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   idx = scan(OUT_FILE,'=',back=.true.)+1
   if(idx.eq.1) stop 'no separator = found in string passed'
   idf = scan(OUT_FILE,'x',back=.true.)
-  read(OUT_FILE(idx:idf-1),'(4I02)') date(1:4) !, micro_phys  ! '(5X4I02A)'
-  date(1) = date(1)+2000
-  TIMELINE = F2UnixTime(date)
+  read(OUT_FILE(idx:idf-1),'(4I02)') date(1,1:4) !, micro_phys  ! '(5X4I02A)'
+  date(1,1) = date(1,1)+2000
+  TIMELINE = F2UnixTime(date, ntime)
 
   ! constructing netCDF file to write data:
   idf = scan(OUT_FILE,'=',back=.true.)-1
@@ -1151,7 +1212,7 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
 
      ! writting Initial date as global variable:
      status = nf90_redef(ncid)
-     status = nf90_put_att(ncid,NF90_GLOBAL,"Start_Date", date) !OUT_FILE(19:26))
+     status = nf90_put_att(ncid,NF90_GLOBAL,"Start_Date", date(1,:) ) !OUT_FILE(19:26))
      status = nf90_enddef(ncid)
 
   end if
@@ -1159,7 +1220,7 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   if(time_len.EQ.NTIME.AND.i_freq.EQ.freq_len) then
      ! writting Initial date as global variable:
      status = nf90_redef(ncid)
-     status = nf90_put_att(ncid,NF90_GLOBAL,"End_Date", date) !OUT_FILE(19:26))  ! (16:23)
+     status = nf90_put_att(ncid,NF90_GLOBAL,"End_Date", date(1,:) ) !OUT_FILE(19:26))  ! (16:23)
      status = nf90_enddef(ncid)
   end if
   
@@ -1422,7 +1483,7 @@ end subroutine MP_storencdf
 
 ! _____________________________________________________________________________________
 ! Subroutine to allocate/deallocate global variables
-subroutine alloc_global_variables
+subroutine allocate_RT3_variables
   use variables
   ! ALLOCATING VARIABLES with netCDF dimensions:
   allocate( hgt_tmp(ngridx, ngridy, 0:nlyr, ntime) )
@@ -1439,7 +1500,8 @@ subroutine alloc_global_variables
   allocate( winddir_tmp(ngridx, ngridy, nlyr, ntime) )
   allocate( lat(ngridx, ngridy),  lon(ngridx, ngridy) )
   allocate( qidx(ngridx, ngridy, ntime) )
-
+  allocate( UnixTime(ntime) )
+  
   ! Initialazing the variables to a fixed value
   hgt_tmp = 0.0d0
   press_tmp = 0.0d0
@@ -1458,7 +1520,7 @@ subroutine alloc_global_variables
   qidx = 0.0d0
   
   return
-end subroutine alloc_global_variables
+end subroutine allocate_RT3_variables
 
 ! -------------------------------------------------------------------------------------
 ! Subroutine to interpolate extra observations angles
@@ -1631,46 +1693,6 @@ subroutine Wind_UV2speeddir(nx, ny, nz, nt, U, V, WS, WD)
 end subroutine Wind_UV2speeddir
 ! ----
 
-! __________________________________________________________________
-! FUNCTION to flip upside-down elemens from a specified dimension
-! in a 4D array. Used mainly for AROME variables.
-!
-! (c) 2020, Pablo Saavedra G.
-! Geophysical Institute, University of Bergen
-! See LICENSE
-! ---
-function flip_4Dvariable_dim(VAR, dims) result(OUTVAR)
-  implicit none
-  integer, intent(in) :: dims
-  real(kind=8), intent(in) :: VAR(:,:,:,:) !
-  real(kind=8), allocatable :: OUTVAR(:,:,:,:)
-  ! local variables
-  integer :: LB, UB
-        
-  LB = lbound(VAR, dims)
-  UB = ubound(VAR, dims)
-  allocate(OUTVAR(size(VAR,1), size(VAR,2), size(VAR,3), size(VAR,4) ))
-
-  select case(dims)
-  case(1)
-     OUTVAR = VAR(UB:LB:-1, :, :, :)
-     
-  case(2)
-     OUTVAR = VAR(:, UB:LB:-1, :, :)
-     
-  case(3)
-     OUTVAR = VAR(:, :, UB:LB:-1, :)
-  case(4)
-     OUTVAR = VAR(:, :, :, UB:LB:-1)
-     
-  case default
-     print*, 'ERROR: variable dimension cannot be GT 4'
-  end select
-
-  return
-
-end function flip_4Dvariable_dim
-! -----
 
 ! _______________________________________________________________________
 ! Subroutine to calculate the Geopotential Height given T, P, MIXR

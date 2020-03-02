@@ -11,28 +11,34 @@
 
 #include<stdio.h>
 #include<time.h>
+#include<stdlib.h>
 
-double F2UnixTime(int dato[6]) {
+double* F2UnixTime(int **dato, int ntime) {
   struct tm tv;
   time_t tt;
-  double NumberOfDays;
-  tt = time(NULL);
-  /* Filling tv with dummy local time */
-  tv = *localtime(&tt);
+  double *NumberOfDays;
+
+  NumberOfDays = (double *) malloc(ntime);
+  for(int i=0; i<ntime; i++){
+    tt = time(NULL);
+    /* Filling tv with dummy local time */
+    tv = *localtime(&tt);
   
-  /* Assigning input Date to the struct time  */
-  tv.tm_year = dato[0]-1900;  /* struct tm year starts on 1900 */
-  tv.tm_mon  = dato[1];
-  tv.tm_mday = dato[2];
-  tv.tm_hour = dato[3];
-  tv.tm_min  = dato[4];
-  tv.tm_sec  = dato[5];
+    /* Assigning input Date to the struct time  */
+    tv.tm_year = dato[i][0]-1900;  /* struct tm year starts on 1900 */
+    tv.tm_mon  = dato[i][1];
+    tv.tm_mday = dato[i][2];
+    tv.tm_hour = dato[i][3];
+    tv.tm_min  = dato[i][4];
+    tv.tm_sec  = dato[i][5];
 
-  /* setting Date as time_t (No time zone considered) */
-  tt = mktime(&tv) - timezone;
+    /* setting Date as time_t (No time zone considered) */
+    tt = mktime(&tv) - timezone;
 
-  /* Converting seconds since Epoch to days*/
-  NumberOfDays = ((double) tt)/60/60/24;
+    /* Converting seconds since Epoch to days*/
+    NumberOfDays[i] = ((double) tt)/60/60/24;
+  }
+  
   return(NumberOfDays);
 }
 

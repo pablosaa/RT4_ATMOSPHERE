@@ -12,7 +12,7 @@
      $     rain_water_tmp, cloud_ice_tmp, snow_tmp, graupel_tmp,
      $     winddir_tmp, windvel_tmp
       real(kind=4) ,allocatable, dimension(:,:) :: lat, lon
-      character(len=:), allocatable :: TimeStamp(:)
+      real(kind=8), allocatable, dimension(:) :: UnixTime
 
 !     PSG: following block adapted for allocatable variables:
       real(kind=8), allocatable, dimension(:) :: FREQ   ! PSG: making FREQ vector for many frequencies
@@ -1089,7 +1089,7 @@ c$$$       nx_idx = nx - nx_in + 1  ! PSG: temporal solution
       deallocate(cloud_water_tmp, rain_water_tmp, cloud_ice_tmp)
       deallocate(snow_tmp, graupel_tmp, windvel_tmp, winddir_tmp)
       deallocate(qidx)
-      deallocate(TimeStamp)
+      deallocate(UnixTime)
           
       STOP
       END        
