@@ -1,6 +1,9 @@
 ! *****************************************************************************************
 ! Set of subroutines to manage netCDF input/output files.
 ! -----------------------------------------------------------------------------------------
+! * module nctoys: Contains axiliary modules for managing netCDF files. Interfaces to
+!                  external functions used by netCDF subroutines.
+! ---
 ! * read_arome   : read netCDF files from AROME-Arctic output files,
 ! * read_wrf     : read netCDF files from WRF output files,
 ! * read_wyosonde: read netCDF files from radiosondes with homoginized layers,
@@ -19,8 +22,19 @@ module nctoys
      character(len=15), allocatable, dimension(:) :: vars
      character(len=15), allocatable, dimension(:) :: dims
   end type ncname
+
+  interface getUnixTime
+     module procedure getF2UnixTime, getCH2UnixTime
+  end interface getUnixTime
+  
 contains
 
+
+  ! ----
+  ! Subroutine to get dimensions from netCDF file needed for RT
+  ! Four dimension are mandatory in the following order:
+  ! [gridx, gridy, layers, time]
+  !
   subroutine get_dims_allocate_vars(ncid, names)
     use netcdf
     use variables, only : nx_in, nx_fin, ny_in, ny_fin, ngridx, ngridy, nlyr, ntime
@@ -59,6 +73,8 @@ contains
 
   end subroutine get_dims_allocate_vars
 
+  ! ----
+  ! Subroutine to check status of netCDF operations:
   subroutine check_nc(status, message, FLAG)
     use netcdf
     implicit none
@@ -74,28 +90,58 @@ contains
     return
   end subroutine check_nc
 
-  subroutine MyUnixTime(datum, unixtime)
+  ! ----
+  ! Subroutine to work with converting Date to unix-time (uses external functions)
+  subroutine getF2UnixTime(datum, unixtime)
     use, intrinsic :: iso_c_binding
 
     implicit none
     ! Interface to the C code for Unix time retrieval:
     interface
+       
        function F2UnixTime(datum, ntime) result(val) bind(c, name='F2UnixTime')
          use, intrinsic :: iso_c_binding
          integer(kind=c_int) :: ntime
          integer(kind=c_int) :: datum(:,:)
          real(kind=c_double) :: val
        end function F2UnixTime
+
     end interface
-    integer, intent(inout) :: datum(:,:)
-    real(kind=8), intent(inout) :: unixtime
+    
+    integer, intent(in) :: datum(:,:)
+    real(kind=8), allocatable, dimension(:), intent(out) :: unixtime
 
     integer :: ntime
     ntime = size(datum,1)
     unixtime = F2UnixTime(datum, ntime)
     return
     
-  end subroutine MyUnixTime
+  end subroutine GetF2UnixTime
+
+  subroutine getCH2UnixTime(datum, unixtime)
+    use, intrinsic :: iso_c_binding
+
+    implicit none
+    ! Interface to the C code for Unix time retrieval:
+    interface
+       
+       function CH2UnixTime(datum, ntime) result(val) bind(c, name='CH2UnixTime')
+         use, intrinsic :: iso_c_binding
+         integer(kind=c_int) :: ntime
+         character(kind=c_char) :: datum(:)
+         real(kind=c_double) :: val
+       end function CH2UnixTime
+       
+    end interface
+    character(len=:), allocatable, intent(in) :: datum(:)
+    real(kind=8), allocatable, dimension(:), intent(out) :: unixtime
+
+    integer :: ntime
+    ntime = size(datum,1)
+    unixtime = CH2UnixTime(datum, ntime)
+    return
+    
+  end subroutine GetCH2UnixTime
 
   subroutine mykakes(A,B)
     implicit none
@@ -177,11 +223,16 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
   call check_nc(status, 'Cannot open AROME netCDF-file '//trim(ncfile), .TRUE.)
 
 
-  aromename%dims = [ character(len=6):: &
+  aromename = ncname(dims=[ character(len=6):: &
        & 'x', &
        & 'y', &
        & 'hybrid', &
-       & 'time']
+       & 'time'])
+!!$  aromename%dims = [ character(len=6):: &
+!!$       & 'x', &
+!!$       & 'y', &
+!!$       & 'hybrid', &
+!!$       & 'time']
 
 
   ! Obtain dimensions and allocate RT variables:
@@ -498,7 +549,7 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
 
   ! 4) Converting TimeStamp to Vector Date variable:
   !!! read(TimeStamp, '(I04XI02XI02XI02XI02XI02)') UnixTime
-  
+  call getUnixTime(TimeStamp, UnixTime)
   
   ! ****************************
   ! Retrieving Global Attribute:
