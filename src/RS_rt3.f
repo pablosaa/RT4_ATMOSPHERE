@@ -20,6 +20,7 @@
      $     press_lev, temp_lev, relhum_lev, cloud_water,
      $     rain_water, cloud_ice, snow, graupel,
      $     avg_pressure, vapor_pressure, rho_vap
+      real, allocatable, dimension(:,:,:) :: PBLH
       real(kind=8), allocatable, dimension(:,:) :: tskin, ics,
      &     srfrain, max_rainwater
       real(kind=8), allocatable, dimension(:,:,:) :: kexttot,
@@ -60,6 +61,8 @@ C     +-------+---------+---------+---------+---------+---------+---------+-+
 C+----------------------------------------------------------------------
 C                    **  RADTRAN I/O SPECIFICATIONS  **
       use variables
+      use nctoys, only : getUnixTime
+      
       implicit none
       include "omp_lib.h"    ! PSG: including OpenMP library
       include    'parameters.inc'
@@ -357,7 +360,7 @@ C     NetCDF output file definition (creating one Ncdf file per frequency):
         write(ystr1,'(i3.3)') ny_in
         write(ystr2,'(i3.3)') ny_fin
         NCDFOUT='../output/TB/RT3TB_'//
-     $       'X'//xstr1//'-'//xstr2//'Y'//ystr1//'-'//ystr2//'_'//     !micro_str//'_'
+     $       'x'//xstr1//'-'//xstr2//'y'//ystr1//'-'//ystr2//'_'//     !micro_str//'_'
      $       trim(input_file(j_temp:))
         
         write(*,*) 'Creating NetCDF '//trim(NCDFOUT)
@@ -566,11 +569,11 @@ c$$$     $ SD_grau//N0graustr//EM_grau//SD_rain//N0rainstr
             !!write(month,'(I2.2)') int(mm(nx,ny, timeidx))
             !!write(day,'(I2.2)') int(dd(nx,ny, timeidx))
             !!write(hour,'(I2.2)') int(hh(nx,ny, timeidx))
-            year = '20' !TimeStamp(timeidx)(3:4)
-            month = '02' !TimeStamp(timeidx)(6:7)
-            day = '28' !TimeStamp(timeidx)(9:10)
-            hour = '00' !TimeStamp(timeidx)(12:13)
-            
+            year = '04' !TimeStamp(timeidx)(3:4)
+            month = '05' !TimeStamp(timeidx)(6:7)
+            day = '09' !TimeStamp(timeidx)(9:10)
+            hour = '15' !TimeStamp(timeidx)(12:13)
+
             date_str=year//month//day//hour 
 c   computing the refractive index of the sea surface
         Salinity=10.0d0
@@ -1061,8 +1064,6 @@ C       write(*,*) 'entra a '//FILE_profile//' com outlevels=',OUTLEVELS   ! PSG
      .                    NOUTLEVELS, OUTLEVELS,NUMAZIMUTHS,i_time)
 
 
-c$$$       ny_idx = ny - ny_in + 1  ! PSG: temporal solution
-c$$$       nx_idx = nx - nx_in + 1  ! PSG: temporal solution
        call MP_storencdf(NCDFOUT, i_time, ifreq, ny, nx,
      $      NLYR, hgt_lev(nx,ny,0:NLYR),
      $      temp_lev(nx,ny,0:NLYR), press_lev(nx,ny,0:NLYR),

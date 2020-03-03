@@ -23,9 +23,21 @@ module nctoys
      character(len=15), allocatable, dimension(:) :: dims
   end type ncname
 
+  ! Interface for generic function for UnixTime and Date conversions:
+  ! How to use (3 following options):
+  ! > unixtime = getUnixTime(date)
+  ! > unixtime = getUnixTime(DateString)
+  ! > date(i)  = getUnixTime(unixtime(i) )
+  !
+  ! Where:
+  ! * date: is a N x 6 array with rows as [year, month, day, hour, min, sec]
+  ! * DateString: is a N x 19 char with row as "YYYY-MM-DD_hh:mi:se"
+  ! * unixtime  : a 1D array with elements as days since epoch.
+  ! * i         : indice to indiates one element at a time
   interface getUnixTime
-     module procedure getF2UnixTime, getCH2UnixTime
+     module procedure getF2UnixTime, getCH2UnixTime, getUnixTime2Date
   end interface getUnixTime
+  ! -- end of interface UnixTime generic function
   
 contains
 
@@ -92,53 +104,72 @@ contains
 
   ! ----
   ! Subroutine to work with converting Date to unix-time (uses external functions)
-  subroutine getF2UnixTime(datum, unixtime)
+  function getUnixTime2Date(unixtime) result(datum)
+    use, intrinsic :: iso_c_binding
+    implicit none
+    interface
+       subroutine UnixTime2Date(unixt, datum) bind(c, name='UnixTime2Date')
+         import
+         real(kind=c_double), value :: unixt
+         integer(kind=c_int) :: datum(6)
+       end subroutine UnixTime2Date
+    end interface
+    real(kind=8) :: unixtime
+    integer :: datum(6)
+
+    call UnixTime2Date(unixtime, datum)
+  end function getUnixTime2Date
+
+  ! ----
+  function getF2UnixTime(datum) result(unixtime)
     use, intrinsic :: iso_c_binding
 
     implicit none
     ! Interface to the C code for Unix time retrieval:
     interface
-       function F2UnixTime(ntime, datum, val) bind(c, name='F2UnixTime')
+       subroutine F2UnixTime(ntime, datum, val) bind(c, name='F2UnixTime')
          import 
          integer(kind=c_int), value :: ntime
          integer(kind=c_int) :: datum(ntime, 6)
          real(kind=c_double) :: val(ntime)
-       end function F2UnixTime
+       end subroutine F2UnixTime
     end interface
     
     integer(c_int), intent(in) :: datum(:,:)
-    real(c_double), intent(out) :: unixtime(:)
+    real(c_double), allocatable :: unixtime(:)
 
     integer :: ntime
     ntime = size(datum,1)
-    ntime = F2UnixTime(ntime, datum, unixtime)
+    allocate(unixtime(ntime) )
+    call F2UnixTime(ntime, datum, unixtime)
     return
     
-  end subroutine GetF2UnixTime
+  end function GetF2UnixTime
 
-  subroutine getCH2UnixTime(datum, unixtime)
+  function getCH2UnixTime(datum) result(unixtime)
     use, intrinsic :: iso_c_binding
 
     implicit none
     ! Interface to the C code for Unix time retrieval:
     interface
-       function CH2UnixTime(ntime, nlen,  datum, val) bind(c, name='CH2UnixTime')
+       subroutine CH2UnixTime(ntime, nlen,  datum, val) bind(c, name='CH2UnixTime')
          import 
          integer(kind=c_int), value :: ntime, nlen
          character(kind=c_char,len=1) :: datum(ntime)
          real(kind=c_double) :: val(ntime)
-       end function CH2UnixTime
+       end subroutine CH2UnixTime
     end interface
     character(kind=c_char, len=*), intent(in) :: datum(:)
-    real(c_double), intent(out) :: unixtime(:)
+    real(c_double), allocatable :: unixtime(:)
 
     integer :: ntime, nlen
     nlen = len(datum)
     ntime = size(datum,1)
-    ntime = CH2UnixTime(ntime, nlen, datum, unixtime)
+    allocate(unixtime(ntime) )
+    call CH2UnixTime(ntime, nlen, datum, unixtime)
     return
     
-  end subroutine GetCH2UnixTime
+  end function GetCH2UnixTime
 
   subroutine mykakes(A,B)
     implicit none
@@ -309,10 +340,10 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
         
      case('time')
         status = nf90_get_var(ncid, VarId, UnixTime, start=(/1/), count=(/ntime/) )
-        
+        UnixTime = UnixTime/60/60/24
      case('atmosphere_boundary_layer_thickness')
-        ! status = nf90_get_var(ncid, VarId, BLH, &
-        ! & start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, 1, ntime/) )
+        status = nf90_get_var(ncid, VarId, PBLH, &
+             & start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, 1, ntime/) )
         
      case default
         print*, 'WARNING: AROME variable ', trim(arome_name(i)),' not recognized.'
@@ -512,7 +543,7 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
        & U_Vel, V_vel, windvel_tmp, winddir_tmp)
 
   ! 4) Converting TimeStamp to Vector Date variable:
-  call getUnixTime(TimeStamp, UnixTime)
+  UnixTime = getUnixTime(TimeStamp)
   
   ! ****************************
   ! Retrieving Global Attribute:
@@ -774,7 +805,8 @@ end subroutine read_wyosonde
 subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
      &LAYERS,freq_str,input_file,micro_phys,SELV,SLAT,SLON,origin_str)
   use netcdf
-  use variables, only : nelv, elevations
+  use nctoys, only : check_nc
+  use variables, only : nelv, elevations, PBLH
   implicit none
 
   integer, intent(in) :: ncflen
@@ -790,7 +822,7 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
   integer :: nDims, mu_id, stok_id, freq_id, lyr_id, time_id, xn_id, yn_id
   integer :: var_mu_id, var_stok_id, var_freq_id, var_lyr_id, var_time_id, var_elvid, var_latid, var_lonid
   integer :: var_xid, var_yid, var_tbup1_id, var_tbdn1_id, var_tbup0_id, var_tbdn0_id
-  integer :: var_te2_id, var_rh2_id, var_pr2_id
+  integer :: var_te2_id, var_rh2_id, var_pr2_id, var_blh_id
   integer :: var_te_id, var_pr_id, var_rh_id, var_qv_id, var_qc_id
   integer :: var_qr_id, var_qs_id, var_qg_id, var_qi_id, var_wd_id, var_ws_id
   integer :: var_kextqc_id, var_kextqr_id, var_kextqs_id
@@ -843,7 +875,8 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
   status = nf90_def_var(ncid, "T2m", NF90_REAL4, (/xn_id, yn_id, time_id/), var_te2_id)
   status = nf90_def_var(ncid, "RH2m", NF90_REAL4, (/xn_id, yn_id, time_id/), var_rh2_id)
   status = nf90_def_var(ncid, "P2m", NF90_REAL4, (/xn_id, yn_id, time_id/), var_pr2_id)
-
+  status = nf90_def_var(ncid, "PBLH", NF90_REAL4, (/xn_id, yn_id, time_id/), var_blh_id)
+  
   ! 2. Atmospheric Profile variables 
   status = nf90_def_var(ncid, "temp", NF90_REAL4, (/xn_id, yn_id, lyr_id, time_id/), var_te_id)
   status = nf90_def_var(ncid, "press", NF90_REAL4, (/xn_id, yn_id, lyr_id, time_id/), var_pr_id)
@@ -876,7 +909,8 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
   status = nf90_def_var(ncid, "latitude", NF90_REAL4, (/xn_id, yn_id/), var_latid)
   status = nf90_def_var(ncid, "longitude", NF90_REAL4, (/xn_id, yn_id/), var_lonid)
 
-  ! Adding Attributes
+  ! ***********************************************
+  ! Adding Attributes for Variables
   status = nf90_put_att(ncid,var_mu_id,"short_name","theta_z")
   status = nf90_put_att(ncid,var_mu_id,"long_name","Zenithal angle")
   status = nf90_put_att(ncid,var_mu_id,"units","degree")
@@ -937,7 +971,12 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
   status = nf90_put_att(ncid,var_pr2_id,"long_name","2m air pressure")
   status = nf90_put_att(ncid,var_pr2_id,"units","hPa")
   status = nf90_put_att(ncid,var_pr2_id,"_FillValue",-999.9)
-  
+
+  status = nf90_put_att(ncid,var_blh_id,"short_name","PBLH")
+  status = nf90_put_att(ncid,var_blh_id,"long_name","Height of the PBL")
+  status = nf90_put_att(ncid,var_blh_id,"units","m")
+  status = nf90_put_att(ncid,var_blh_id,"_FillValue",-999.9)
+
   ! Attributes for Profile variables
   status = nf90_put_att(ncid,var_te_id,"short_name","temp")
   status = nf90_put_att(ncid,var_te_id,"long_name","temperature")
@@ -1072,7 +1111,11 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
 
   ! End definitions
   status = nf90_enddef(ncid)
+
+  ! Writting variables that won't change during calculation:
+  status = nf90_put_var(ncid, var_blh_id, PBLH)
   
+
   ! Putting variables independent of time:
   stokes_var = (/(I,I=1,NSTOKES)/)
   !TIMELINE = -999.9
@@ -1085,10 +1128,8 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
   status = nf90_put_var(ncid, var_lonid, SLON)
   
   status = nf90_close(ncid)
-  if (status /= NF90_NOERR) then
-        print*, nf90_strerror(status)
-        stop 'Error closing after creation NetCDF'
-  end if 
+  call check_nc(status, 'Error closing after creation NetCDF', .true.)
+
 end subroutine createncdf
 ! ___________________________________________________________________________
 
@@ -1100,21 +1141,21 @@ end subroutine createncdf
 ! ----------------------------------------------------------------------------
 subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,time_len)
   use netcdf
-  use variables, only : nx_in, nx_fin, ny_in, ny_fin, timeidx, nx, ny
+  use variables, only : nx_in, nx_fin, ny_in, ny_fin, timeidx, nx, ny, UnixTime
   use nctoys
-  use, intrinsic :: iso_c_binding
-  
-  implicit none
-
-  ! Interface to the C code for Unix time retrieval:
-  interface
-     function F2UnixTime(datum, ntime) result(val) bind(c, name='F2UnixTime')
-       use, intrinsic :: iso_c_binding
-       integer(kind=c_int) :: ntime
-       integer(kind=c_int) :: datum(:,:)
-       real(kind=c_double) :: val
-     end function F2UnixTime
-  end interface
+!!$  use, intrinsic :: iso_c_binding
+!!$  
+!!$  implicit none
+!!$
+!!$  ! Interface to the C code for Unix time retrieval:
+!!$  interface
+!!$     function F2UnixTime(datum, ntime) result(val) bind(c, name='F2UnixTime')
+!!$       use, intrinsic :: iso_c_binding
+!!$       integer(kind=c_int) :: ntime
+!!$       integer(kind=c_int) :: datum(:,:)
+!!$       real(kind=c_double) :: val
+!!$     end function F2UnixTime
+!!$  end interface
   
   character(len=*), intent(in) :: OUT_FILE
   real(kind=8), intent(in) :: MU_VALUES(NUMMU), HEIGHT(NOUTLEVELS), OUTVAR(NUMMU,NSTOKES,2,NOUTLEVELS)
@@ -1131,8 +1172,8 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   real(kind=8), allocatable, dimension(:) :: ZENITH_THTA  ! (NUMMU)
   real(kind=8), allocatable, dimension(:,:,:,:) :: TB_THTA
   real(kind=8), allocatable, dimension(:) :: elevations, elvmu
-  real(kind=c_double) :: TIMELINE
-  integer(kind=c_int) :: date(1,6)
+  !!real(kind=8) :: TIMELINE
+  integer :: date(6)
   real(kind=8), parameter :: PI = 4.0*atan(1.0)
   integer :: nelv, NANG
   
@@ -1150,17 +1191,18 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   read(OUT_FILE(idx:),'(I03XI03)') x_grid, y_grid
   
   if(x_grid.NE.nx.OR.y_grid.NE.ny) stop 'ERROR passing x_grid or y_grid in storecdf'
-  x_grid = nx - nx_in + 1
-  y_grid = ny - ny_in + 1
+  !x_grid = nx - nx_in + 1
+  !y_grid = ny - ny_in + 1
   
   ! * Date and * getting microphysics from OUT_FILE:
-  date = 0
-  idx = scan(OUT_FILE,'=',back=.true.)+1
-  if(idx.eq.1) stop 'no separator = found in string passed'
-  idf = scan(OUT_FILE,'x',back=.true.)
-  read(OUT_FILE(idx:idf-1),'(4I02)') date(1,1:4) !, micro_phys  ! '(5X4I02A)'
-  date(1,1) = date(1,1)+2000
-  TIMELINE = F2UnixTime(date, ntime)
+  date = getUnixTime(UnixTime(time_len) )
+
+  !! idx = scan(OUT_FILE,'=',back=.true.)+1
+  !! if(idx.eq.1) stop 'no separator = found in string passed'
+  !! idf = scan(OUT_FILE,'x',back=.true.)
+  !! read(OUT_FILE(idx:idf-1),'(4I02)') date(1,1:4) !, micro_phys  ! '(5X4I02A)'
+  !! date(1,1) = date(1,1)+2000
+  !! TIMELINE = F2UnixTime(date, ntime)
 
   ! constructing netCDF file to write data:
   idf = scan(OUT_FILE,'=',back=.true.)-1
@@ -1174,9 +1216,6 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   !!!status = nf90_inquire(ncid, nDimensions = nDims,unlimitedDimID = unlimdimid)
   status = nf90_inq_varid(ncid,"time",unlimdimid)
   status = nf90_inquire_dimension(ncid,unlimdimid,dim_name, NTIME)
-  !!!allocate(TIMELINE(time_len))
-  !!!status = nf90_get_var(ncid,unlimdimid,TIMELINE)
-  !!!time_len = minloc(TIMELINE,MASK=TIMELINE.LT.0)
 
   ! For frequency
   ! * Frequency from OUT_FILE:
@@ -1189,7 +1228,8 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   status = nf90_get_var(ncid,freq_id,AllFreq(1:freq_len))
 
   if(i_freq.LT.1) stop 'ERROR finding frequency index in STORENCDF'
-  print*, 'Date, UXTIME, x-grid, y-grid, freq dim has: ',date, TIMELINE, x_grid, y_grid, AllFreq(i_freq)
+  print*, 'Date, UXTIME, x-grid, y-grid, freq dim has: ',date, UnixTime(time_len), &
+       x_grid, y_grid, AllFreq(i_freq)
   
   ! Writting variable values ZENITH_THTA into NetCDF file:
   status = nf90_inq_varid(ncid, "theta_z", VarId)
@@ -1226,7 +1266,7 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
 
      ! writting Initial date as global variable:
      status = nf90_redef(ncid)
-     status = nf90_put_att(ncid,NF90_GLOBAL,"Start_Date", date(1,:) ) !OUT_FILE(19:26))
+     status = nf90_put_att(ncid,NF90_GLOBAL,"Start_Date", date ) !OUT_FILE(19:26))
      status = nf90_enddef(ncid)
 
   end if
@@ -1234,7 +1274,7 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   if(time_len.EQ.NTIME.AND.i_freq.EQ.freq_len) then
      ! writting Initial date as global variable:
      status = nf90_redef(ncid)
-     status = nf90_put_att(ncid,NF90_GLOBAL,"End_Date", date(1,:) ) !OUT_FILE(19:26))  ! (16:23)
+     status = nf90_put_att(ncid,NF90_GLOBAL,"End_Date", date ) !OUT_FILE(19:26))  ! (16:23)
      status = nf90_enddef(ncid)
   end if
   
@@ -1242,7 +1282,7 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   ! writting TB_UPwelling
   status = nf90_inq_varid(ncid, "time", VarId)
   if(status /= nf90_NoErr) stop 'Time cannot be assigned!'
-  status = nf90_put_var(ncid,VarId,TIMELINE,start=(/time_len/))  ! date(3)
+  status = nf90_put_var(ncid,VarId, UnixTime(time_len), start=(/time_len/))
   if(status /= nf90_NoErr) stop 'Time values cannot be stored!'
 
   ! writting TOA TB_UPwelling ( OUTVAR has the dimension of [mu,stokes,Xwelling,level]) 
@@ -1274,16 +1314,13 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   if(status /= nf90_NoErr) stop 'TB_DN GRD values cannot be stored!'
     
   ! writting x_grid and y grid indexes:
-  status = nf90_inq_varid(ncid,"xn", VarId)
+  status = nf90_inq_varid(ncid, "xn", VarId)
   status = nf90_put_var(ncid, VarId, nx, start = (/x_grid/))
   status = nf90_inq_varid(ncid,"yn", VarId)
   status = nf90_put_var(ncid, VarId, ny, start = (/y_grid/))
   
   status = NF90_CLOSE(ncid)
-  if (status /= NF90_NOERR) then
-     print*, NF90_strerror(status)
-     stop 'Closing NetCDF was not possible!'
-  end if
+  call check_nc(status, 'Closing NetCDF (storencdf) not possible!', .true.)
      
   if(allocated(ZENITH_THTA)) deallocate(ZENITH_THTA)
   if(allocated(TB_THTA)) deallocate(TB_THTA)
@@ -1515,6 +1552,7 @@ subroutine allocate_RT3_variables
   allocate( lat(ngridx, ngridy),  lon(ngridx, ngridy) )
   allocate( qidx(ngridx, ngridy, ntime) )
   allocate( UnixTime(ntime) )
+  allocate( PBLH(ngridx, ngridy, ntime) )
   
   ! Initialazing the variables to a fixed value
   hgt_tmp = 0.0d0
@@ -1532,6 +1570,7 @@ subroutine allocate_RT3_variables
   lat  = 0.0d0
   long = 0.0d0
   qidx = 0.0d0
+  PBLH = -99.9
   
   return
 end subroutine allocate_RT3_variables
