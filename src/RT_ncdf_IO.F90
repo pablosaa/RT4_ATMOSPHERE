@@ -98,22 +98,20 @@ contains
     implicit none
     ! Interface to the C code for Unix time retrieval:
     interface
-       
-       function F2UnixTime(datum, ntime) result(val) bind(c, name='F2UnixTime')
-         use, intrinsic :: iso_c_binding
-         integer(kind=c_int) :: ntime
-         integer(kind=c_int) :: datum(:,:)
-         real(kind=c_double) :: val
+       function F2UnixTime(ntime, datum, val) bind(c, name='F2UnixTime')
+         import 
+         integer(kind=c_int), value :: ntime
+         integer(kind=c_int) :: datum(ntime, 6)
+         real(kind=c_double) :: val(ntime)
        end function F2UnixTime
-
     end interface
     
-    integer, intent(in) :: datum(:,:)
-    real(kind=8), allocatable, dimension(:), intent(out) :: unixtime
+    integer(c_int), intent(in) :: datum(:,:)
+    real(c_double), intent(out) :: unixtime(:)
 
     integer :: ntime
     ntime = size(datum,1)
-    unixtime = F2UnixTime(datum, ntime)
+    ntime = F2UnixTime(ntime, datum, unixtime)
     return
     
   end subroutine GetF2UnixTime
@@ -124,21 +122,20 @@ contains
     implicit none
     ! Interface to the C code for Unix time retrieval:
     interface
-       
-       function CH2UnixTime(datum, ntime) result(val) bind(c, name='CH2UnixTime')
-         use, intrinsic :: iso_c_binding
-         integer(kind=c_int) :: ntime
-         character(kind=c_char) :: datum(:)
-         real(kind=c_double) :: val
+       function CH2UnixTime(ntime, nlen,  datum, val) bind(c, name='CH2UnixTime')
+         import 
+         integer(kind=c_int), value :: ntime, nlen
+         character(kind=c_char,len=1) :: datum(ntime)
+         real(kind=c_double) :: val(ntime)
        end function CH2UnixTime
-       
     end interface
-    character(len=:), allocatable, intent(in) :: datum(:)
-    real(kind=8), allocatable, dimension(:), intent(out) :: unixtime
+    character(kind=c_char, len=*), intent(in) :: datum(:)
+    real(c_double), intent(out) :: unixtime(:)
 
-    integer :: ntime
+    integer :: ntime, nlen
+    nlen = len(datum)
     ntime = size(datum,1)
-    unixtime = CH2UnixTime(datum, ntime)
+    ntime = CH2UnixTime(ntime, nlen, datum, unixtime)
     return
     
   end subroutine GetCH2UnixTime
@@ -228,12 +225,6 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
        & 'y', &
        & 'hybrid', &
        & 'time'])
-!!$  aromename%dims = [ character(len=6):: &
-!!$       & 'x', &
-!!$       & 'y', &
-!!$       & 'hybrid', &
-!!$       & 'time']
-
 
   ! Obtain dimensions and allocate RT variables:
   CALL get_dims_allocate_vars(ncid, aromename)
@@ -254,7 +245,7 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
      if(status.NE.NF90_NOERR) faktor = 1.
 
      select case(trim(arome_name(i) ))
-        ! *** Reading for WRF SURFACE variables:
+        ! *** Reading for AROME SURFACE variables:
      case('air_temperature_2m')
         status = nf90_get_var(ncid, VarId, temp_tmp(:, :, 0:0, :), &
              & start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, 1, ntime/) )
@@ -324,7 +315,7 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
         ! & start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, 1, ntime/) )
         
      case default
-        print*, 'WARNING: WRF variable ', trim(arome_name(i)),' not recognized.'
+        print*, 'WARNING: AROME variable ', trim(arome_name(i)),' not recognized.'
      end select
   end do
 
@@ -428,7 +419,7 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
        & 'Times']
 
   type(ncname) :: wrfname
-  ! -----------------------------------------------------------------------------
+  ! --------------------------------------------------------------------
   ! Open file and read directory
   print*,'WRF netCDF input files is', ncflen, ' : ', trim(ncfile)
   
@@ -436,7 +427,7 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   call check_nc(status, 'Cannot open netCDF-file: '//trim(ncfile), .true.)
 
   ! Defining dimension names in WRF netCDF file:
-  wrfname%dims = [ character(len=11):: &
+  wrfname % dims = [ character(len=11):: &
        & 'west_east', &
        & 'south_north', &
        & 'bottom_top', &
@@ -445,46 +436,19 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
 
   ! Obtain dimensions and allocate RT variables:
   CALL get_dims_allocate_vars(ncid, wrfname)
-
-
-!!$  status = nf90_inquire(ncid, ndims_in, nvars_in, ngatts_in, unlimdimid_in)
-!!$  ! Get ID of unlimited dimension
-!!$
-!!$  do i=1, ndims_in
-!!$     ! assigning dimension name and length:
-!!$     status = nf90_inquire_dimension(ncid, i, dim_name, dim_len)
-!!$     select case(trim(dim_name) )
-!!$     case('west_east')
-!!$        ngridx = dim_len
-!!$     case('south_north')
-!!$        ngridy = dim_len
-!!$     case('bottom_top')
-!!$        nlyr = dim_len
-!!$     case('Time')
-!!$        ntime = dim_len
-!!$     case('DateStrLen')
-!!$        NN = dim_len
-!!$     case default
-!!$        print*, 'netCDF file dimension '//trim(dim_name)//' unknown!'
-!!$        ! stop
-!!$     end select
-!!$  end do
-!!$  allocate( character(len=NN) :: TimeStamp(ntime) )
-!!$  
-!!$  call allocate_RT3_variables
   
   ! For local variables:
   allocate(mixratio(ngridx, ngridy, 0:nlyr, ntime) )
   allocate(U_Vel(ngridx, ngridy, nlyr, ntime) )
   allocate(V_Vel(ngridx, ngridy, nlyr, ntime) )
-  allocate(character(len=18) :: TimeStamp(ntime) )
+  allocate(character(len=19) :: TimeStamp(ntime) )
   
   qidx = 15
 
   ! loop over all variables needed from WRF netCDF file
   do i=1, size(wrfvarname)
      status = nf90_inq_varid(ncid, trim(wrfvarname(i) ), VarId)
-     call check_nc(status, 'Variable '//trim(wrfvarname(i))//' cannot be read.', .true.)
+     call check_nc(status, 'Variable '//trim(wrfvarname(i))//' cannot be read.')
 
      select case(trim(wrfvarname(i) ))
         ! *** Reading for WRF SURFACE variables:
@@ -548,7 +512,6 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
        & U_Vel, V_vel, windvel_tmp, winddir_tmp)
 
   ! 4) Converting TimeStamp to Vector Date variable:
-  !!! read(TimeStamp, '(I04XI02XI02XI02XI02XI02)') UnixTime
   call getUnixTime(TimeStamp, UnixTime)
   
   ! ****************************
