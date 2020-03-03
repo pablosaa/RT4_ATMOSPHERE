@@ -1,10 +1,10 @@
 &inputparam
 	input_type='arome',
-	input_file='/home/pablo/GFI/data/WRF/wrfout_d03_2010-09-15_06:00:00',
-	nx_in=1,
-	nx_fin=1,
-	ny_in=1,
-	ny_fin=4,
+	input_file='/home/pga082/GFI/data/AROME/arome_arctic_full_2_5km_20191231T21Z.nc',
+	nx_in=10,
+	nx_fin=20,
+	ny_in=70,
+	ny_fin=80,
 	n_freq=14,
 	nelv = 10,
 /
