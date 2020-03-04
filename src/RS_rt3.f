@@ -1,5 +1,5 @@
       module variables
-!     Indexes:
+!     ** Indexes:
       integer :: nx_in, nx_fin, ny_in, ny_fin, nx, ny
       integer :: n_freq, ifreq, nelv, timeidx, i_time ! PSG: new block... , ntime      
       integer ngridx, ngridy, nlyr, ntime
@@ -14,7 +14,7 @@
       real(kind=4) ,allocatable, dimension(:,:) :: lat, lon
       real(kind=8), allocatable, dimension(:) :: UnixTime
 
-!     PSG: following block adapted for allocatable variables:
+!     ** PSG: following block adapted for allocatable variables:
       real(kind=8), allocatable, dimension(:) :: FREQ   ! PSG: making FREQ vector for many frequencies
       real(kind=8), allocatable, dimension(:,:,:) :: hgt_lev,
      $     press_lev, temp_lev, relhum_lev, cloud_water,
@@ -33,10 +33,12 @@
       real(kind=8), allocatable, dimension(:) :: LYR_TEMP, LYR_PRES,
      &     REL_HUM, KEXTATMO, AVGPRESSURE, VAPORPRESSURE
 
-!     Constants:
+!     ** Constants:
       real, parameter :: PI = dacos(-1.0d0)
       real, parameter :: PI2deg = 45.0/atan(1.0d0)
       end module variables
+!     -------- End definition of global variables
+!     ________________________________________________________
       
       program model_radtran_MW
 
@@ -61,7 +63,6 @@ C     +-------+---------+---------+---------+---------+---------+---------+-+
 C+----------------------------------------------------------------------
 C                    **  RADTRAN I/O SPECIFICATIONS  **
       use variables
-      use nctoys, only : getUnixTime
       
       implicit none
       include "omp_lib.h"    ! PSG: including OpenMP library
@@ -78,7 +79,7 @@ C                    **  RADTRAN I/O SPECIFICATIONS  **
      $ SD_rain*3,N0snowstr*3,N0graustr*3,N0rainstr*3
        REAL*8    DIRECT_FLUX, DIRECT_MU
        real*8     lam,gammln
-      character*2 year,month,day, hour    ! PSG: including hour
+!character*2 year,month,day, hour    ! PSG: including hour
       character*8  date_str, sim_tag      ! PSG: was character*6  date_str, new sim_tag
       INTEGER AUIOF, BUIO                 ! PSG: open-file units depending on OMP_THREAD
        INTEGER     MAXLEG, NLEGEN, NUMRAD,NLEGENcw,NLEGENci,
@@ -237,8 +238,8 @@ C       N_lay_cut=135  ! PSG: commented, not needed
        DIRECT_FLUX=0.d0
        DIRECT_MU=0.0d0       
        maxleg=200
-        emissivity=0.90d0
-        GROUND_ALBEDO=1.0-emissivity
+       emissivity=0.90d0
+       GROUND_ALBEDO=1.0-emissivity
 c   
        SKY_TEMP=2.7
 C       WAVELENGTH=1000000.0    ! PSG: must be freq dependent :/
@@ -308,26 +309,14 @@ C     !PSG: Calling the NetCDF routine to read data
         end select
 
         ! PSG: Checking if customized grid size has been given in 'input'
-c$$$        if(nx_in.EQ.0) nx_in = 1
-c$$$        if(nx_fin.EQ.0) nx_fin = ngridx
-c$$$        if(ny_in.EQ.0) ny_in = 1
-c$$$        if(ny_fin.EQ.0) ny_fin = ngridy
         if(n_freq.LT.1.OR.n_freq.GT.20) then
            write(*,*) 'Input variable n_freq out of bounds!'
            write(*,*) 'n_freq needs to be >1 and max 20'
            stop 'Wrong variable in input parameter file'
         end if
         
-        !do i=1, ntime
-        !   write(*,'(10F9.3)') (cloud_ice_tmp(i,j,5,1), j=1,mxgridy)
-        !   print*, TimeStamp(i)
-        !   write(*,'(10F9.3)') (temp_tmp(i,j,5,1), j=1,mxgridy)
-        !enddo
-        !print*, 'press at ground is: ', origin_str
-
         OUTLEVELS(1)=1          ! PSG: moved from befor call RT3 to here
         OUTLEVELS(2)=nlyr+1     ! PSG: N_lay_cut+1
-
         
         write(SP_str(1:3),'(f3.1)')SP
 c     write(18,*)'str',H_str
@@ -366,15 +355,17 @@ C     NetCDF output file definition (creating one Ncdf file per frequency):
         write(*,*) 'Creating NetCDF '//trim(NCDFOUT)
         write(*,*) 'ntime=',ntime,'; nlayer=',nlyr,'; nfreq=',n_freq
 
-c$$$        NXtot = nx_fin - nx_in + 1 ! PSG: temporal solution
-c$$$        NYtot = ny_fin - ny_in + 1 ! PSG: temporal solution
+c$$$        call createncdf(len_trim(NCDFOUT), trim(NCDFOUT),
+c$$$     $       NUMMU, n_freq, NSTOKES, nlyr,
+c$$$     $       ngridx, ngridy, hgt_tmp(:,:,1:nlyr,1),
+c$$$     $       FREQ(1:n_freq), input_file, micro_str,
+c$$$     $       real(hgt_tmp(:, :, 0 , 1), 4),
+c$$$     $       lat, lon, trim(origin_str) )
+
         call createncdf(len_trim(NCDFOUT), trim(NCDFOUT),
-     $       NUMMU, n_freq, NSTOKES, nlyr,
-     $       ngridx, ngridy, hgt_tmp(nx_in,ny_in,1:nlyr,1),
-     $       FREQ(1:n_freq), input_file, micro_str,
-     $       real(hgt_tmp(nx_in:nx_fin, ny_in:ny_fin,0,1),4),
-     $       lat(nx_in:nx_fin, ny_in:ny_fin),
-     $       lon(nx_in:nx_fin, ny_in:ny_fin), trim(origin_str) )
+     $       NUMMU, NSTOKES,
+     $       input_file, micro_str,
+     $       trim(origin_str) )
 
         print*, 'After creating netcdf'
         allocate(LYR_TEMP(0:nlyr), LYR_PRES(0:nlyr),
@@ -569,12 +560,8 @@ c$$$     $ SD_grau//N0graustr//EM_grau//SD_rain//N0rainstr
             !!write(month,'(I2.2)') int(mm(nx,ny, timeidx))
             !!write(day,'(I2.2)') int(dd(nx,ny, timeidx))
             !!write(hour,'(I2.2)') int(hh(nx,ny, timeidx))
-            year = '04' !TimeStamp(timeidx)(3:4)
-            month = '05' !TimeStamp(timeidx)(6:7)
-            day = '09' !TimeStamp(timeidx)(9:10)
-            hour = '15' !TimeStamp(timeidx)(12:13)
 
-            date_str=year//month//day//hour 
+            date_str = 'YYMMDDHH' !year//month//day//hour 
 c   computing the refractive index of the sea surface
         Salinity=10.0d0
         call DIECON(Salinity,temp_lev(nx,ny,0)-273.16,FREQ(ifreq),E1,E2)

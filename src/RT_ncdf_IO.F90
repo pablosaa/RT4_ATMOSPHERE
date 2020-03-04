@@ -802,19 +802,21 @@ end subroutine read_wyosonde
 ! to their corresponding NetCDF variables.
 !
 ! ----------------------------------------------------------------------------
-subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
-     &LAYERS,freq_str,input_file,micro_phys,SELV,SLAT,SLON,origin_str)
+!subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
+!     &LAYERS,freq_str,input_file,micro_phys,SELV,SLAT,SLON,origin_str)
+subroutine createncdf(ncflen, ncfile,NUMMU,NSTOKES,&
+     &input_file,micro_phys,origin_str)
   use netcdf
   use nctoys, only : check_nc
-  use variables, only : nelv, elevations, PBLH
+  use variables, only : nelv, elevations, n_freq, nlyr, ngridx, ngridy, hgt_tmp, FREQ, lat, lon, PBLH
   implicit none
 
   integer, intent(in) :: ncflen
   character(len=ncflen), intent(in) :: ncfile
   character(len=*) input_file, micro_phys
-  integer, intent(in) :: NUMMU, NFREQ,NSTOKES,NLYR, XN, YN
-  real(kind=8), intent(in) :: freq_str(NFREQ), LAYERS(NLYR)
-  real(kind=4), intent(in) :: SELV(XN,YN), SLAT(XN,YN), SLON(XN,YN)
+  integer, intent(in) :: NUMMU, NSTOKES
+  !real(kind=8), intent(in) :: freq_str(NFREQ), LAYERS(NLYR)
+  !real(kind=4), intent(in) :: SELV(XN,YN), SLAT(XN,YN), SLON(XN,YN)
   character(len=*), intent(in) :: origin_str
   
   ! internal variables
@@ -832,18 +834,6 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
   !real(kind=4), dimension(NTIME) :: TIMELINE
   integer :: NANGLES !!nelv, 
 
-  !!real(kind=8), dimension(10) :: elevations
-  !!namelist/mwrobsang/nelv,elevations
-
-  ! reading auxiliary input file with extra elevation angles
-  !!OPEN(UNIT=100, FILE='mwrobsang',STATUS='old',IOSTAT=status)
-  !!if(status.eq.0) then
-  !!   READ(UNIT=100,nml=mwrobsang)
-  !!   close(UNIT=100)
-  !!else
-  !!   nelv = 0
-  !!   elevations = 0
-  !!end if
   NANGLES = NUMMU + nelv
 
   status = nf90_create(trim(ncfile),ior(NF90_CLOBBER,NF90_64BIT_OFFSET),ncid)
@@ -851,18 +841,18 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
 
   ! Defining dimensions
   status = nf90_def_dim(ncid, "theta_z", NANGLES, mu_id) ! NUMMU
-  status = nf90_def_dim(ncid, "freq", NFREQ, freq_id)
+  status = nf90_def_dim(ncid, "freq", N_FREQ, freq_id)
   status = nf90_def_dim(ncid, "stokes", NSTOKES, stok_id)
   status = nf90_def_dim(ncid, "layer", NLYR, lyr_id)
   status = nf90_def_dim(ncid, "time", NF90_UNLIMITED, time_id)
-  status = nf90_def_dim(ncid, "xn", XN , xn_id)
-  status = nf90_def_dim(ncid, "yn", YN , yn_id)
+  status = nf90_def_dim(ncid, "xn", ngridx , xn_id)
+  status = nf90_def_dim(ncid, "yn", ngridy , yn_id)
 
   ! Define of variables
   status = nf90_def_var(ncid, "theta_z", NF90_REAL4, (/ mu_id /), var_mu_id)
   status = nf90_def_var(ncid, "freq", NF90_REAL4, (/ freq_id /), var_freq_id)
   status = nf90_def_var(ncid, "stokes", NF90_INT, (/ stok_id /), var_stok_id)
-  status = nf90_def_var(ncid, "layer", NF90_REAL, (/lyr_id/), var_lyr_id)
+  status = nf90_def_var(ncid, "layer", NF90_REAL, (/xn_id, yn_id, lyr_id/), var_lyr_id)
   status = nf90_def_var(ncid, "time", NF90_REAL, (/ time_id /), var_time_id)
   status = nf90_def_var(ncid, "TB_UP_TOA", NF90_REAL4, (/ mu_id, freq_id, stok_id, xn_id, yn_id, time_id /), var_tbup1_id)
   status = nf90_def_var(ncid, "TB_UP_GRD", NF90_REAL4, (/ mu_id, freq_id, stok_id, xn_id, yn_id, time_id /), var_tbup0_id)
@@ -911,197 +901,197 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
 
   ! ***********************************************
   ! Adding Attributes for Variables
-  status = nf90_put_att(ncid,var_mu_id,"short_name","theta_z")
-  status = nf90_put_att(ncid,var_mu_id,"long_name","Zenithal angle")
-  status = nf90_put_att(ncid,var_mu_id,"units","degree")
-  status = nf90_put_att(ncid,var_mu_id,"N_obs_angles", nelv)
-  status = nf90_put_att(ncid,var_mu_id,"Obs_angles_degree", elevations(:nelv))
-  status = nf90_put_att(ncid,var_mu_id,"N_sim_angles",NUMMU)
+  status = nf90_put_att(ncid, var_mu_id, "short_name","theta_z")
+  status = nf90_put_att(ncid, var_mu_id, "long_name","Zenithal angle")
+  status = nf90_put_att(ncid, var_mu_id, "units","degree")
+  status = nf90_put_att(ncid, var_mu_id, "N_obs_angles", nelv)
+  status = nf90_put_att(ncid, var_mu_id, "Obs_angles_degree", elevations(:nelv))
+  status = nf90_put_att(ncid, var_mu_id, "N_sim_angles",NUMMU)
 
-  status = nf90_put_att(ncid,var_stok_id,"short_name","stk")
-  status = nf90_put_att(ncid,var_stok_id,"long_name","Stokes_vector")
-  status = nf90_put_att(ncid,var_stok_id,"units","1")
+  status = nf90_put_att(ncid, var_stok_id, "short_name","stk")
+  status = nf90_put_att(ncid, var_stok_id, "long_name","Stokes_vector")
+  status = nf90_put_att(ncid, var_stok_id, "units","1")
 
-  status = nf90_put_att(ncid,var_lyr_id,"short_name","layer")
-  status = nf90_put_att(ncid,var_lyr_id,"long_name","profile layer height")
-  status = nf90_put_att(ncid,var_lyr_id,"units","km")
-  status = nf90_put_att(ncid,var_lyr_id,"_FillValue", -999.9)
+  status = nf90_put_att(ncid, var_lyr_id, "short_name","layer")
+  status = nf90_put_att(ncid, var_lyr_id, "long_name","profile layer height")
+  status = nf90_put_att(ncid, var_lyr_id, "units","km")
+  status = nf90_put_att(ncid, var_lyr_id, "_FillValue", -999.9)
 
-  status = nf90_put_att(ncid,var_freq_id,"short_name","freq")
-  status = nf90_put_att(ncid,var_freq_id,"long_name","Radiometric frequency")
-  status = nf90_put_att(ncid,var_freq_id,"units","GHz")
+  status = nf90_put_att(ncid, var_freq_id, "short_name","freq")
+  status = nf90_put_att(ncid, var_freq_id, "long_name","Radiometric frequency")
+  status = nf90_put_att(ncid, var_freq_id, "units","GHz")
 
-  status = nf90_put_att(ncid,var_time_id,"short_name","time")
-  status = nf90_put_att(ncid,var_time_id,"long_name","days since 1970.1.1 00:00:00")
-  status = nf90_put_att(ncid,var_time_id,"units","day")
-  status = nf90_put_att(ncid,var_time_id,"_FillValue", -999.9)
+  status = nf90_put_att(ncid, var_time_id, "short_name","time")
+  status = nf90_put_att(ncid, var_time_id, "long_name","days since 1970.1.1 00:00:00")
+  status = nf90_put_att(ncid, var_time_id, "units","day")
+  status = nf90_put_att(ncid, var_time_id, "_FillValue", -999.9)
 
-  status = nf90_put_att(ncid,var_tbup1_id,"short_name","TB_UP_TOA")
-  status = nf90_put_att(ncid,var_tbup1_id,"long_name","TOA Brightness Temperature (Upwelling)")
-  status = nf90_put_att(ncid,var_tbup1_id,"units","K")
-  status = nf90_put_att(ncid,var_tbup1_id,"_FillValue", -999.9)
+  status = nf90_put_att(ncid, var_tbup1_id, "short_name","TB_UP_TOA")
+  status = nf90_put_att(ncid, var_tbup1_id, "long_name","TOA Brightness Temperature (Upwelling)")
+  status = nf90_put_att(ncid, var_tbup1_id, "units","K")
+  status = nf90_put_att(ncid, var_tbup1_id, "_FillValue", -999.9)
 
-  status = nf90_put_att(ncid,var_tbdn1_id,"short_name","TB_DN_TOA")
-  status = nf90_put_att(ncid,var_tbdn1_id,"long_name","TOA Brightness Temperature (Downwelling)")
-  status = nf90_put_att(ncid,var_tbdn1_id,"units","K")
-  status = nf90_put_att(ncid,var_tbdn1_id,"_FillValue", -999.9)
+  status = nf90_put_att(ncid, var_tbdn1_id, "short_name","TB_DN_TOA")
+  status = nf90_put_att(ncid, var_tbdn1_id, "long_name","TOA Brightness Temperature (Downwelling)")
+  status = nf90_put_att(ncid, var_tbdn1_id, "units","K")
+  status = nf90_put_att(ncid, var_tbdn1_id, "_FillValue", -999.9)
 
-  status = nf90_put_att(ncid,var_tbup0_id,"short_name","TB_UP_GND")
-  status = nf90_put_att(ncid,var_tbup0_id,"long_name","GROUND Brightness Temperature (Upwelling)")
-  status = nf90_put_att(ncid,var_tbup0_id,"units","K")
-  status = nf90_put_att(ncid,var_tbup0_id,"_FillValue", -999.9)
+  status = nf90_put_att(ncid, var_tbup0_id, "short_name","TB_UP_GND")
+  status = nf90_put_att(ncid, var_tbup0_id, "long_name","GROUND Brightness Temperature (Upwelling)")
+  status = nf90_put_att(ncid, var_tbup0_id, "units","K")
+  status = nf90_put_att(ncid, var_tbup0_id, "_FillValue", -999.9)
 
-  status = nf90_put_att(ncid,var_tbdn0_id,"short_name","TB_DN_GND")
-  status = nf90_put_att(ncid,var_tbdn0_id,"long_name","GROUND Brightness Temperature (Downwelling)")
-  status = nf90_put_att(ncid,var_tbdn0_id,"units","K")
-  status = nf90_put_att(ncid,var_tbdn0_id,"_FillValue", -999.9)
+  status = nf90_put_att(ncid, var_tbdn0_id, "short_name","TB_DN_GND")
+  status = nf90_put_att(ncid, var_tbdn0_id, "long_name","GROUND Brightness Temperature (Downwelling)")
+  status = nf90_put_att(ncid, var_tbdn0_id, "units","K")
+  status = nf90_put_att(ncid, var_tbdn0_id, "_FillValue", -999.9)
 
   ! Attributes for Station level variables
-  status = nf90_put_att(ncid,var_te2_id,"short_name","T2m")
-  status = nf90_put_att(ncid,var_te2_id,"long_name","2m Temperature")
-  status = nf90_put_att(ncid,var_te2_id,"units","K")
-  status = nf90_put_att(ncid,var_te2_id,"_FillValue",-999.9)
+  status = nf90_put_att(ncid, var_te2_id, "short_name","T2m")
+  status = nf90_put_att(ncid, var_te2_id, "long_name","2m Temperature")
+  status = nf90_put_att(ncid, var_te2_id, "units","K")
+  status = nf90_put_att(ncid, var_te2_id, "_FillValue",-999.9)
 
-  status = nf90_put_att(ncid,var_rh2_id,"short_name","RH_s")
-  status = nf90_put_att(ncid,var_rh2_id,"long_name","2m Relative humidity")
-  status = nf90_put_att(ncid,var_rh2_id,"units","%")
-  status = nf90_put_att(ncid,var_rh2_id,"_FillValue",-999.9)
+  status = nf90_put_att(ncid, var_rh2_id, "short_name","RH_s")
+  status = nf90_put_att(ncid, var_rh2_id, "long_name","2m Relative humidity")
+  status = nf90_put_att(ncid, var_rh2_id, "units","%")
+  status = nf90_put_att(ncid, var_rh2_id, "_FillValue",-999.9)
 
-  status = nf90_put_att(ncid,var_pr2_id,"short_name","P_s")
-  status = nf90_put_att(ncid,var_pr2_id,"long_name","2m air pressure")
-  status = nf90_put_att(ncid,var_pr2_id,"units","hPa")
-  status = nf90_put_att(ncid,var_pr2_id,"_FillValue",-999.9)
+  status = nf90_put_att(ncid, var_pr2_id, "short_name","P_s")
+  status = nf90_put_att(ncid, var_pr2_id, "long_name","2m air pressure")
+  status = nf90_put_att(ncid, var_pr2_id, "units","hPa")
+  status = nf90_put_att(ncid, var_pr2_id, "_FillValue",-999.9)
 
-  status = nf90_put_att(ncid,var_blh_id,"short_name","PBLH")
-  status = nf90_put_att(ncid,var_blh_id,"long_name","Height of the PBL")
-  status = nf90_put_att(ncid,var_blh_id,"units","m")
-  status = nf90_put_att(ncid,var_blh_id,"_FillValue",-999.9)
+  status = nf90_put_att(ncid, var_blh_id, "short_name","PBLH")
+  status = nf90_put_att(ncid, var_blh_id, "long_name","Height of the PBL")
+  status = nf90_put_att(ncid, var_blh_id, "units","m")
+  status = nf90_put_att(ncid, var_blh_id, "_FillValue",-999.9)
 
   ! Attributes for Profile variables
-  status = nf90_put_att(ncid,var_te_id,"short_name","temp")
-  status = nf90_put_att(ncid,var_te_id,"long_name","temperature")
-  status = nf90_put_att(ncid,var_te_id,"units","K")
-  status = nf90_put_att(ncid,var_te_id,"_FillValue",-999.9)
+  status = nf90_put_att(ncid, var_te_id, "short_name","temp")
+  status = nf90_put_att(ncid, var_te_id, "long_name","temperature")
+  status = nf90_put_att(ncid, var_te_id, "units","K")
+  status = nf90_put_att(ncid, var_te_id, "_FillValue",-999.9)
 
-  status = nf90_put_att(ncid,var_pr_id,"short_name","press")
-  status = nf90_put_att(ncid,var_pr_id,"long_name","pressure")
-  status = nf90_put_att(ncid,var_pr_id,"units","hPa")
-  status = nf90_put_att(ncid,var_pr_id,"_FillValue",-999.9)
+  status = nf90_put_att(ncid, var_pr_id, "short_name","press")
+  status = nf90_put_att(ncid, var_pr_id, "long_name","pressure")
+  status = nf90_put_att(ncid, var_pr_id, "units","hPa")
+  status = nf90_put_att(ncid, var_pr_id, "_FillValue",-999.9)
 
-  status = nf90_put_att(ncid,var_rh_id,"short_name","rh")
-  status = nf90_put_att(ncid,var_rh_id,"long_name","relative humidity")
-  status = nf90_put_att(ncid,var_rh_id,"units","%")
-  status = nf90_put_att(ncid,var_rh_id,"_FillValue",-999.9)
+  status = nf90_put_att(ncid, var_rh_id, "short_name","rh")
+  status = nf90_put_att(ncid, var_rh_id, "long_name","relative humidity")
+  status = nf90_put_att(ncid, var_rh_id, "units","%")
+  status = nf90_put_att(ncid, var_rh_id, "_FillValue",-999.9)
   
-  status = nf90_put_att(ncid,var_qv_id,"short_name","qv")
-  status = nf90_put_att(ncid,var_qv_id,"long_name","specific humidity")
-  status = nf90_put_att(ncid,var_qv_id,"units","g m-3")
-  status = nf90_put_att(ncid,var_qv_id,"_FillValue",-999.9)
+  status = nf90_put_att(ncid, var_qv_id, "short_name","qv")
+  status = nf90_put_att(ncid, var_qv_id, "long_name","specific humidity")
+  status = nf90_put_att(ncid, var_qv_id, "units","g m-3")
+  status = nf90_put_att(ncid, var_qv_id, "_FillValue",-999.9)
 
-  status = nf90_put_att(ncid,var_qc_id,"short_name","qc")
-  status = nf90_put_att(ncid,var_qc_id,"long_name","cloud water content")
-  status = nf90_put_att(ncid,var_qc_id,"units","g m-3")
-  status = nf90_put_att(ncid,var_qc_id,"_FillValue",-999.9)
+  status = nf90_put_att(ncid, var_qc_id, "short_name","qc")
+  status = nf90_put_att(ncid, var_qc_id, "long_name","cloud water content")
+  status = nf90_put_att(ncid, var_qc_id, "units","g m-3")
+  status = nf90_put_att(ncid, var_qc_id, "_FillValue",-999.9)
 
-  status = nf90_put_att(ncid,var_qr_id,"short_name","qr")
-  status = nf90_put_att(ncid,var_qr_id,"long_name","rain water content")
-  status = nf90_put_att(ncid,var_qr_id,"units","g m-3")
-  status = nf90_put_att(ncid,var_qr_id,"_FillValue",-999.9)
+  status = nf90_put_att(ncid, var_qr_id, "short_name","qr")
+  status = nf90_put_att(ncid, var_qr_id, "long_name","rain water content")
+  status = nf90_put_att(ncid, var_qr_id, "units","g m-3")
+  status = nf90_put_att(ncid, var_qr_id, "_FillValue",-999.9)
   
-  status = nf90_put_att(ncid,var_qs_id,"short_name","qs")
-  status = nf90_put_att(ncid,var_qs_id,"long_name","snow water content")
-  status = nf90_put_att(ncid,var_qs_id,"units","g m-3")
-  status = nf90_put_att(ncid,var_qs_id,"_FillValue",-999.9)
+  status = nf90_put_att(ncid, var_qs_id, "short_name","qs")
+  status = nf90_put_att(ncid, var_qs_id, "long_name","snow water content")
+  status = nf90_put_att(ncid, var_qs_id, "units","g m-3")
+  status = nf90_put_att(ncid, var_qs_id, "_FillValue",-999.9)
 
-  status = nf90_put_att(ncid,var_qg_id,"short_name","qg")
-  status = nf90_put_att(ncid,var_qg_id,"long_name","graupel water content")
-  status = nf90_put_att(ncid,var_qg_id,"units","g m-3")
-  status = nf90_put_att(ncid,var_qg_id,"_FillValue",-999.9)
+  status = nf90_put_att(ncid, var_qg_id, "short_name","qg")
+  status = nf90_put_att(ncid, var_qg_id, "long_name","graupel water content")
+  status = nf90_put_att(ncid, var_qg_id, "units","g m-3")
+  status = nf90_put_att(ncid, var_qg_id, "_FillValue",-999.9)
 
-  status = nf90_put_att(ncid,var_qi_id,"short_name","qi")
-  status = nf90_put_att(ncid,var_qi_id,"long_name","ice water content")
-  status = nf90_put_att(ncid,var_qi_id,"units","g m-3")
-  status = nf90_put_att(ncid,var_qi_id,"_FillValue",-999.9)
+  status = nf90_put_att(ncid, var_qi_id, "short_name","qi")
+  status = nf90_put_att(ncid, var_qi_id, "long_name","ice water content")
+  status = nf90_put_att(ncid, var_qi_id, "units","g m-3")
+  status = nf90_put_att(ncid, var_qi_id, "_FillValue",-999.9)
 
-  status = nf90_put_att(ncid,var_wd_id,"short_name","wd")
-  status = nf90_put_att(ncid,var_wd_id,"long_name","wind direction")
-  status = nf90_put_att(ncid,var_wd_id,"units","deg")
-  status = nf90_put_att(ncid,var_wd_id,"_FillValue",-999.9)
+  status = nf90_put_att(ncid, var_wd_id, "short_name","wd")
+  status = nf90_put_att(ncid, var_wd_id, "long_name","wind direction")
+  status = nf90_put_att(ncid, var_wd_id, "units","deg")
+  status = nf90_put_att(ncid, var_wd_id, "_FillValue",-999.9)
 
-  status = nf90_put_att(ncid,var_ws_id,"short_name","ws")
-  status = nf90_put_att(ncid,var_ws_id,"long_name","wind speed")
-  status = nf90_put_att(ncid,var_ws_id,"units","knot")
-  status = nf90_put_att(ncid,var_ws_id,"_FillValue",-999.9)
+  status = nf90_put_att(ncid, var_ws_id, "short_name","ws")
+  status = nf90_put_att(ncid, var_ws_id, "long_name","wind speed")
+  status = nf90_put_att(ncid, var_ws_id, "units","knot")
+  status = nf90_put_att(ncid, var_ws_id, "_FillValue",-999.9)
 
 
-  status = nf90_put_att(ncid,var_kexttot_id,"short_name","kext_tot")
-  status = nf90_put_att(ncid,var_kexttot_id,"long_name","total extinction coefficient")
-  status = nf90_put_att(ncid,var_kexttot_id,"units","km-1")
-  status = nf90_put_att(ncid,var_kexttot_id,"_FillValue",-999.9)
+  status = nf90_put_att(ncid, var_kexttot_id, "short_name","kext_tot")
+  status = nf90_put_att(ncid, var_kexttot_id, "long_name","total extinction coefficient")
+  status = nf90_put_att(ncid, var_kexttot_id, "units","km-1")
+  status = nf90_put_att(ncid, var_kexttot_id, "_FillValue",-999.9)
   
-  status = nf90_put_att(ncid,var_kextatm_id,"short_name","kext_atm")
-  status = nf90_put_att(ncid,var_kextatm_id,"long_name","atmospheric extinction coefficient")
-  status = nf90_put_att(ncid,var_kextatm_id,"units","km-1")
-  status = nf90_put_att(ncid,var_kextatm_id,"_FillValue",-999.9)
+  status = nf90_put_att(ncid, var_kextatm_id, "short_name","kext_atm")
+  status = nf90_put_att(ncid, var_kextatm_id, "long_name","atmospheric extinction coefficient")
+  status = nf90_put_att(ncid, var_kextatm_id, "units","km-1")
+  status = nf90_put_att(ncid, var_kextatm_id, "_FillValue",-999.9)
 
-  status = nf90_put_att(ncid,var_kextqc_id,"short_name","kext_cloud")
-  status = nf90_put_att(ncid,var_kextqc_id,"long_name","cloud extinction coefficient")
-  status = nf90_put_att(ncid,var_kextqc_id,"units","km-1")
-  status = nf90_put_att(ncid,var_kextqc_id,"_FillValue",-999.9)
+  status = nf90_put_att(ncid, var_kextqc_id, "short_name","kext_cloud")
+  status = nf90_put_att(ncid, var_kextqc_id, "long_name","cloud extinction coefficient")
+  status = nf90_put_att(ncid, var_kextqc_id, "units","km-1")
+  status = nf90_put_att(ncid, var_kextqc_id, "_FillValue",-999.9)
 
-  status = nf90_put_att(ncid,var_kextqr_id,"short_name","kext_rain")
-  status = nf90_put_att(ncid,var_kextqr_id,"long_name","rain extinction coefficient")
-  status = nf90_put_att(ncid,var_kextqr_id,"units","km-1")
-  status = nf90_put_att(ncid,var_kextqr_id,"_FillValue",-999.9)
+  status = nf90_put_att(ncid, var_kextqr_id, "short_name","kext_rain")
+  status = nf90_put_att(ncid, var_kextqr_id, "long_name","rain extinction coefficient")
+  status = nf90_put_att(ncid, var_kextqr_id, "units","km-1")
+  status = nf90_put_att(ncid, var_kextqr_id, "_FillValue",-999.9)
   
-  status = nf90_put_att(ncid,var_kextqs_id,"short_name","kext_snow")
-  status = nf90_put_att(ncid,var_kextqs_id,"long_name","snow extinction coefficient")
-  status = nf90_put_att(ncid,var_kextqs_id,"units","km-1")
-  status = nf90_put_att(ncid,var_kextqs_id,"_FillValue",-999.9)
+  status = nf90_put_att(ncid, var_kextqs_id, "short_name","kext_snow")
+  status = nf90_put_att(ncid, var_kextqs_id, "long_name","snow extinction coefficient")
+  status = nf90_put_att(ncid, var_kextqs_id, "units","km-1")
+  status = nf90_put_att(ncid, var_kextqs_id, "_FillValue",-999.9)
 
-  status = nf90_put_att(ncid,var_kextqg_id,"short_name","kext_graupel")
-  status = nf90_put_att(ncid,var_kextqg_id,"long_name","graupel extinction coefficient")
-  status = nf90_put_att(ncid,var_kextqg_id,"units","km-1")
-  status = nf90_put_att(ncid,var_kextqg_id,"_FillValue",-999.9)
+  status = nf90_put_att(ncid, var_kextqg_id, "short_name","kext_graupel")
+  status = nf90_put_att(ncid, var_kextqg_id, "long_name","graupel extinction coefficient")
+  status = nf90_put_att(ncid, var_kextqg_id, "units","km-1")
+  status = nf90_put_att(ncid, var_kextqg_id, "_FillValue",-999.9)
 
-  status = nf90_put_att(ncid,var_kextqi_id,"short_name","kext_ice")
-  status = nf90_put_att(ncid,var_kextqi_id,"long_name","ice extinction coefficient")
-  status = nf90_put_att(ncid,var_kextqi_id,"units","km-1")
-  status = nf90_put_att(ncid,var_kextqi_id,"_FillValue",-999.9)
+  status = nf90_put_att(ncid, var_kextqi_id, "short_name","kext_ice")
+  status = nf90_put_att(ncid, var_kextqi_id, "long_name","ice extinction coefficient")
+  status = nf90_put_att(ncid, var_kextqi_id, "units","km-1")
+  status = nf90_put_att(ncid, var_kextqi_id, "_FillValue",-999.9)
   
-  status = nf90_put_att(ncid,var_salbtot_id,"short_name","alb_tot")
-  status = nf90_put_att(ncid,var_salbtot_id,"long_name","total surface albedo")
-  status = nf90_put_att(ncid,var_salbtot_id,"units","")
-  status = nf90_put_att(ncid,var_salbtot_id,"_FillValue",-999.9)
+  status = nf90_put_att(ncid, var_salbtot_id, "short_name","alb_tot")
+  status = nf90_put_att(ncid, var_salbtot_id, "long_name","total surface albedo")
+  status = nf90_put_att(ncid, var_salbtot_id, "units","-")
+  status = nf90_put_att(ncid, var_salbtot_id, "_FillValue",-999.9)
 
-  status = nf90_put_att(ncid,var_backsct_id,"short_name","backscatt")
-  status = nf90_put_att(ncid,var_backsct_id,"long_name","backscattering coefficient")
-  status = nf90_put_att(ncid,var_backsct_id,"units","km-1")
-  status = nf90_put_att(ncid,var_backsct_id,"_FillValue",-999.9)
+  status = nf90_put_att(ncid, var_backsct_id, "short_name","backscatt")
+  status = nf90_put_att(ncid, var_backsct_id, "long_name","backscattering coefficient")
+  status = nf90_put_att(ncid, var_backsct_id, "units","km-1")
+  status = nf90_put_att(ncid, var_backsct_id, "_FillValue",-999.9)
 
-  status = nf90_put_att(ncid,var_gcoeff_id,"short_name","g_coeff")
-  status = nf90_put_att(ncid,var_gcoeff_id,"long_name","asymetry factor")
-  status = nf90_put_att(ncid,var_gcoeff_id,"units","1")
-  status = nf90_put_att(ncid,var_gcoeff_id,"_FillValue",-999.9)
+  status = nf90_put_att(ncid, var_gcoeff_id, "short_name","g_coeff")
+  status = nf90_put_att(ncid, var_gcoeff_id, "long_name","asymetry factor")
+  status = nf90_put_att(ncid, var_gcoeff_id, "units", "-")
+  status = nf90_put_att(ncid, var_gcoeff_id, "_FillValue",-999.9)
 
 
   ! ***** Grid variables 
-  status = nf90_put_att(ncid,var_xid,"short_name","Xn")
-  status = nf90_put_att(ncid,var_xid,"long_name","X_grid")
-  status = nf90_put_att(ncid,var_yid,"short_name","Yn")
-  status = nf90_put_att(ncid,var_yid,"long_name","Y_grid")
+  status = nf90_put_att(ncid, var_xid, "short_name", "Xn")
+  status = nf90_put_att(ncid, var_xid, "long_name", "X_grid")
+  status = nf90_put_att(ncid, var_yid, "short_name", "Yn")
+  status = nf90_put_att(ncid, var_yid, "long_name", "Y_grid")
 
-  status = nf90_put_att(ncid,var_elvid,"short_name","ELV")
-  status = nf90_put_att(ncid,var_elvid,"long_name","Elevation")
-  status = nf90_put_att(ncid,var_elvid,"units","km")
+  status = nf90_put_att(ncid, var_elvid, "short_name", "ELV")
+  status = nf90_put_att(ncid, var_elvid, "long_name", "Elevation")
+  status = nf90_put_att(ncid, var_elvid, "units", "km")
 
-  status = nf90_put_att(ncid,var_latid,"short_name","LAT")
-  status = nf90_put_att(ncid,var_latid,"long_name","Latitude")
-  status = nf90_put_att(ncid,var_latid,"units","DEG")
+  status = nf90_put_att(ncid, var_latid, "short_name", "LAT")
+  status = nf90_put_att(ncid, var_latid, "long_name", "Latitude")
+  status = nf90_put_att(ncid, var_latid, "units", "DEG")
   
-  status = nf90_put_att(ncid,var_lonid,"short_name","LON")
-  status = nf90_put_att(ncid,var_lonid,"long_name","Longitude")
-  status = nf90_put_att(ncid,var_lonid,"units","DEG")
+  status = nf90_put_att(ncid, var_lonid, "short_name", "LON")
+  status = nf90_put_att(ncid, var_lonid, "long_name", "Longitude")
+  status = nf90_put_att(ncid, var_lonid, "units", "DEG")
 
   status = nf90_put_att(ncid,NF90_GLOBAL,"Input_data", input_file)
   status = nf90_put_att(ncid,NF90_GLOBAL,"Wyosonde_station", trim(origin_str))
@@ -1119,13 +1109,13 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
   ! Putting variables independent of time:
   stokes_var = (/(I,I=1,NSTOKES)/)
   !TIMELINE = -999.9
-  status = nf90_put_var(ncid, var_lyr_id, LAYERS)
-  status = nf90_put_var(ncid, var_freq_id, freq_str)
+  status = nf90_put_var(ncid, var_lyr_id, hgt_tmp(:,:,1:nlyr,1) )
+  status = nf90_put_var(ncid, var_freq_id, FREQ)
   status = nf90_put_var(ncid, var_stok_id, stokes_var)
   !status = nf90_put_var(ncid, var_time_id, TIMELINE)
-  status = nf90_put_var(ncid, var_elvid, SELV)
-  status = nf90_put_var(ncid, var_latid, SLAT)
-  status = nf90_put_var(ncid, var_lonid, SLON)
+  status = nf90_put_var(ncid, var_elvid, real(hgt_tmp(:,:,0,1),4) )
+  status = nf90_put_var(ncid, var_latid, lat)
+  status = nf90_put_var(ncid, var_lonid, lon)
   
   status = nf90_close(ncid)
   call check_nc(status, 'Error closing after creation NetCDF', .true.)
