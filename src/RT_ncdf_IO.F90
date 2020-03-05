@@ -365,12 +365,14 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
 
   ! 3) Converting specific humidity to vapour mixing ratio
   print *, '3. converting Qv to mixr'
-  mixr_tmp = QV(:,:,1:nlyr,:)/(1.d0 - QV(:,:,1:nlyr,:))
+  mixr_tmp = QV(:,:,1:nlyr,:)/(1.d0 - QV(:,:,1:nlyr,:))  ! [kg/kg]
 
   ! 4) Calculating Geopotential Altitude:
   call Calculate_GeopotentialZ(ngridx, ngridy, nlyr, ntime,&
        &temp_tmp, press_tmp, mixr_tmp, hgt_tmp(:,:,1:nlyr,:) )
 
+  mixr_tmp = 1.0E3*mixr_tmp   ! [g/kg]
+  
   ! 5) Converting Wind U and V components to Windspeed and Direction:
   print *, '5. converting U V to speed dir'
   call Wind_UV2speeddir(ngridx, ngridy, nlyr, ntime,&
@@ -536,7 +538,7 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   ! 2) Converting Vapor mixing ratio to Relative Humidity
   call mixr2rh(ngridx, ngridy, 1+nlyr, ntime,&
        & mixratio, press_tmp, temp_tmp, relhum_tmp)
-  mixr_tmp = 1E3*mixratio(:, :, 1:nlyr, :)
+  mixr_tmp = 1E3*mixratio(:, :, 1:nlyr, :)   ! [g/kg]
 
   ! 3) Converting Wind U and V components to Windspeed and Direction:
   call Wind_UV2speeddir(ngridx, ngridy, nlyr, ntime, &
@@ -1249,7 +1251,7 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
      ! converting cos(mu) to zenithal angle:
      ZENITH_THTA = acos(ZENITH_THTA)*180.0/PI
      status = nf90_put_var(ncid,VarId,ZENITH_THTA(:NANG))
-     if(status /= nf90_NoErr) stop 'cos(MU) values cannot be stored!'
+     call check_nc(status, 'cos(MU) values cannot be stored!', .true.)
 
 
      ! writting Initial date as global variable:
@@ -1269,37 +1271,39 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   ! writing time
   ! writting TB_UPwelling
   status = nf90_inq_varid(ncid, "time", VarId)
-  if(status /= nf90_NoErr) stop 'Time cannot be assigned!'
+  call check_nc(status, 'Time cannot be assigned!', .true.)
   status = nf90_put_var(ncid,VarId, UnixTime(time_len), start=(/time_len/))
-  if(status /= nf90_NoErr) stop 'Time values cannot be stored!'
+  call check_nc(status, 'Time values cannot be stored!', .true.)
 
   ! writting TOA TB_UPwelling ( OUTVAR has the dimension of [mu,stokes,Xwelling,level]) 
   status = nf90_inq_varid(ncid, "TB_UP_TOA", VarId)
-  if(status /= nf90_NoErr) stop 'TB_UP TOA cannot be assigned!' ! OUTVAR(:,:,1,1)
+  call check_nc(status, 'TB_UP TOA cannot be assigned!', .true.)
   status = nf90_put_var(ncid,VarId,TB_THTA(:NANG,:,1,1),start=(/1,i_freq,1,x_grid,y_grid,time_len/),count=(/NANG,1,2,1,1,1/))
   !status = nf90_put_var(ncid,VarId,OUTVAR(:,:,1,:),start=(/1,1,1,x_grid,y_grid,time_len/),count=(/NUMMU,2,NOUTLEVELS,1,1,1/))
-  if(status /= nf90_NoErr) stop 'TB_UP TOA values cannot be stored!'
+  call check_nc(status, 'TB_UP TOA values cannot be stored!', .true.)
   
   ! writting TOA TB_DOWNwelling
   status = nf90_inq_varid(ncid, "TB_DN_TOA", VarId)
-  if(status /= nf90_NoErr) stop 'TB_DN TOA cannot be assigned!' ! OUTVAR(:,:,2,1)
+  call check_nc(status, 'TB_DN TOA cannot be assigned!', .true.)
   !status = nf90_put_var(ncid,VarId,OUTVAR(:,:,2,:),start=(/1,1,1,time_len/),count=(/NUMMU,2,NOUTLEVELS,1/))
   status = nf90_put_var(ncid,VarId,TB_THTA(:NANG,:,2,1),start=(/1,i_freq,1,x_grid,y_grid,time_len/),count=(/NANG,1,2,1,1,1/))
-  if(status /= nf90_NoErr) stop 'TB_DN TOA values cannot be stored!'
+  call check_nc(status, 'TB_DN TOA values cannot be stored!', .true.)
   
   ! writting GROUND TB_UPwelling ( OUTVAR has the dimension of [mu,stokes,Xwelling,level]) 
   status = nf90_inq_varid(ncid, "TB_UP_GRD", VarId)
-  if(status /= nf90_NoErr) stop 'TB_UP GRD cannot be assigned!'
+  call check_nc(status, 'TB_UP GRD cannot be assigned!', .true.)
   status = nf90_put_var(ncid,VarId,TB_THTA(:NANG,:,1,2),start=(/1,i_freq,1,x_grid,y_grid,time_len/),count=(/NANG,1,2,1,1,1/))
   !status = nf90_put_var(ncid,VarId,OUTVAR(:,:,1,:),start=(/1,1,1,x_grid,y_grid,time_len/),count=(/NUMMU,2,NOUTLEVELS,1,1,1/))
-  if(status /= nf90_NoErr) stop 'TB_UP GRD values cannot be stored!'
+  call check_nc(status, 'TB_UP GRD values cannot be stored!', .true.)
   
   ! writting GROUND TB_DOWNwelling
   status = nf90_inq_varid(ncid, "TB_DN_GRD", VarId)
-  if(status /= nf90_NoErr) stop 'TB_DN GRD cannot be assigned!'
+  call check_nc(status, 'TB_DN GRD cannot be assigned!', .true.)
   !status = nf90_put_var(ncid,VarId,OUTVAR(:,:,2,:),start=(/1,1,1,time_len/),count=(/NUMMU,2,NOUTLEVELS,1/))
-  status = nf90_put_var(ncid,VarId,TB_THTA(:NANG,:,2,2),start=(/1,i_freq,1,x_grid,y_grid,time_len/),count=(/NANG,1,2,1,1,1/))
-  if(status /= nf90_NoErr) stop 'TB_DN GRD values cannot be stored!'
+  status = nf90_put_var(ncid,VarId,TB_THTA(:NANG,:,2,2), &
+       start=(/1,i_freq,1,x_grid,y_grid,time_len/), &
+       count=(/NANG,1,2,1,1,1/))
+  call check_nc(status, 'TB_DN GRD values cannot be stored!', .true.)
     
   ! writting x_grid and y grid indexes:
   status = nf90_inq_varid(ncid, "xn", VarId)
@@ -1326,11 +1330,15 @@ end subroutine storencdf
 ! SUBROUTINE Microphysics variable storege for the RT3/4 NetCDF output file
 !
 ! ----------------------------------------------------------------------------
-subroutine MP_storencdf(OUT_FILE,time_len,i_freq,y_grid,x_grid,NLYR,LAYERS,TEMP,PRESS,RH,QV,QC,&
-     &WD, WS, KEXTQC, KEXTATM, KEXTTOT, ALBEDO, BACKSCATT, GCOEFF)
+!!$subroutine MP_storencdf(OUT_FILE,time_len,i_freq,y_grid,x_grid,NLYR,LAYERS,TEMP,PRESS,RH,QV,QC,&
+!!$     &WD, WS, KEXTQC, KEXTATM, KEXTTOT, ALBEDO, BACKSCATT, GCOEFF)
+
+subroutine MP_storencdf(OUT_FILE, time_len, i_freq)
   use netcdf
-  use variables, only : nx, ny, KEXTATMO, rain_water, cloud_ice, snow, graupel,&
-       &kextrain, kextice, kextsnow, kextgraupel
+  use variables, only : nx, ny, kextcloud, KEXTATMO, &
+       kextrain, kextice, kextsnow, kextgraupel &
+       cloud_water, rain_water, cloud_ice, snow, graupel,&
+       salbtot, back, g_coeff
   
   implicit none
 
