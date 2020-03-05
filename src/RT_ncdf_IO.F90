@@ -355,35 +355,33 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
   do i = 1, nlyr
      press_tmp(:, :, nlyr-i+1, :) = sigma_hybrid(i)*press_tmp(:, :, 0, :)
   end do
-
   press_tmp = press_tmp*1.0E-2  ! [hPa]
-  
+  ! --
   ! 2) Converting vapour mixing ratio to Relative Humidity
   print *, '2. converting Qv to RH'
   call qv2rh(ngridx, ngridy, 1+nlyr, ntime,&
        & QV, press_tmp, temp_tmp, relhum_tmp)
-
+  ! --
   ! 3) Converting specific humidity to vapour mixing ratio
   print *, '3. converting Qv to mixr'
   mixr_tmp = QV(:,:,1:nlyr,:)/(1.d0 - QV(:,:,1:nlyr,:))  ! [kg/kg]
-
+  ! --
   ! 4) Calculating Geopotential Altitude:
   call Calculate_GeopotentialZ(ngridx, ngridy, nlyr, ntime,&
        &temp_tmp, press_tmp, mixr_tmp, hgt_tmp(:,:,1:nlyr,:) )
 
   mixr_tmp = 1.0E3*mixr_tmp   ! [g/kg]
-  
+  ! --
   ! 5) Converting Wind U and V components to Windspeed and Direction:
   print *, '5. converting U V to speed dir'
-  call Wind_UV2speeddir(ngridx, ngridy, nlyr, ntime,&
-       & U_Vel, V_Vel, windvel_tmp, winddir_tmp)
-
+  call Wind_UV2speeddir(U_Vel, V_Vel, windvel_tmp, winddir_tmp)
+  ! --
   qidx = 15
   del_xy = 2.5  ! [km]
 
   ! ****************************
   ! Retrieving Global Attribute:
-  status = nf90_get_att(ncid,NF90_GLOBAL, 'title', varname)
+  status = nf90_get_att(ncid, NF90_GLOBAL, 'title', varname)
   write(origin_str,'(A)')  trim(varname)//'->'//trim(ncfile)
   
   ! ****************************
@@ -541,8 +539,7 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   mixr_tmp = 1E3*mixratio(:, :, 1:nlyr, :)   ! [g/kg]
 
   ! 3) Converting Wind U and V components to Windspeed and Direction:
-  call Wind_UV2speeddir(ngridx, ngridy, nlyr, ntime, &
-       & U_Vel, V_vel, windvel_tmp, winddir_tmp)
+  call Wind_UV2speeddir(U_Vel, V_vel, windvel_tmp, winddir_tmp)
 
   ! 4) Converting TimeStamp to Vector Date variable:
   UnixTime = getUnixTime(TimeStamp)
@@ -1336,8 +1333,8 @@ end subroutine storencdf
 subroutine MP_storencdf(OUT_FILE, time_len, i_freq)
   use netcdf
   use variables, only : nx, ny, kextcloud, KEXTATMO, &
-       kextrain, kextice, kextsnow, kextgraupel &
-       cloud_water, rain_water, cloud_ice, snow, graupel,&
+       kextrain, kextice, kextsnow, kextgraupel, &
+       cloud_water, rain_water, cloud_ice, snow, graupel, &
        salbtot, back, g_coeff
   
   implicit none
@@ -1422,7 +1419,7 @@ subroutine MP_storencdf(OUT_FILE, time_len, i_freq)
   status = nf90_inq_varid(ncid, "qr", VarId)
   if(status /= nf90_NoErr) stop 'QR variable ID cannot be read!'
   status = nf90_put_var(ncid, VarId, rain_water(nx, ny, :), &
-       &start=(/x_grid, y_grid, 1, time_len/),count=(/1, 1, NLYR, 1/) )
+       start=(/x_grid, y_grid, 1, time_len/),count=(/1, 1, NLYR, 1/) )
   if(status /= nf90_NoErr) stop 'QR cannot be written!'
 
   ! Writting the QI variable
@@ -1667,6 +1664,7 @@ subroutine mixr2rh(nx, ny, nz, nt, MIXR, P, T, RH)
   real, parameter :: CC(6) = (/ -7.85951783, 1.84408259, &
        & -11.7866497, 22.6807411, -15.9618719, 1.80122502 /)
   real, parameter :: EE(6) = (/1.0, 1.5, 3.0, 3.5, 4.0, 7.5/)
+
   etha = 1.0d0 - T/Tc
   A = 0.0d0
   do i=1, 6
@@ -1729,17 +1727,27 @@ end subroutine PERTHETA2T
 ! (c) 2019, Pablo Saavedra G.
 ! Geophysical Institute, University of Bonn
 ! ---
-subroutine Wind_UV2speeddir(nx, ny, nz, nt, U, V, WS, WD)
+elemental subroutine Wind_UV2speeddir(U, V, WS, WD)
   implicit none
-  integer, intent(in) :: nx, ny ,nz, nt
-  real(kind=8), intent(in), dimension(nx,ny,nz,nt) :: U, V
-  real(kind=8), intent(out), dimension(nx,ny,nz,nt) :: WS, WD
+  real(kind=8), intent(in) :: U, V
+  real(kind=8), intent(out) :: WS, WD
   real, parameter :: PI2deg = 45.0/atan(1.0)
   
   WS = sqrt( U*U + V*V)
   WD = modulo(360.0 - atan2(U, V)*PI2deg, 360.0)
   return
 end subroutine Wind_UV2speeddir
+!!$subroutine Wind_UV2speeddir(nx, ny, nz, nt, U, V, WS, WD)
+!!$  implicit none
+!!$  integer, intent(in) :: nx, ny ,nz, nt
+!!$  real(kind=8), intent(in), dimension(nx,ny,nz,nt) :: U, V
+!!$  real(kind=8), intent(out), dimension(nx,ny,nz,nt) :: WS, WD
+!!$  real, parameter :: PI2deg = 45.0/atan(1.0)
+!!$  
+!!$  WS = sqrt( U*U + V*V)
+!!$  WD = modulo(360.0 - atan2(U, V)*PI2deg, 360.0)
+!!$  return
+!!$end subroutine Wind_UV2speeddir
 ! ----
 
 
@@ -1773,8 +1781,8 @@ subroutine Calculate_GeopotentialZ(NX, NY, NZ, NT, T, P, MIXR, Z)
 
 
   allocate(TV(NX, NY, NZ, NT) )
-  call Calculate_VirtualTemperature(NX, NY, NZ, NT, T(:,:,1:NZ,:), MIXR, TV)
-
+  !call Calculate_VirtualTemperature(NX, NY, NZ, NT, T(:,:,1:NZ,:), MIXR, TV)
+  call T2TV(T(:,:,1:NZ,:), MIXR, TV)
   
   del_P = P(:,:,0:NZ-1,:) - P(:,:,1:NZ,:)
 
@@ -1818,3 +1826,12 @@ subroutine Calculate_VirtualTemperature(NX, NY, NZ, NT, T, MIXR, TV)
   TV = T*(1.d0 + MIXR/eps)/(1.d0 + MIXR)
   return
 end subroutine Calculate_VirtualTemperature
+
+elemental subroutine T2TV(T, MIXR, TV)
+  implicit none
+  real, intent(in) :: T, MIXR
+  real, intent(out) :: TV
+
+  TV = T*(1.0 + MIXR*1.604)/(1.0 + MIXR)
+  return
+end subroutine T2TV

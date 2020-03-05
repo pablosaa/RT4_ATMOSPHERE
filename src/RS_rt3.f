@@ -425,20 +425,20 @@ C     !PSG: Passing temporal variables to old variables (no time)
               snow = snow_tmp(:,:,:, timeidx)
               graupel = graupel_tmp(:,:,:, timeidx)
               max_rainwater = maxval(rain_water,DIM=3)
-              KEXTATMO = 0.0d
-              kexttot = 0.0d
-              g_coeff = 0.0d
-              kextcloud = 0.0d
-              kextrain = 0.0d
-              kextice = 0.0d
-              kextgraupel = 0.0d
-              kextsnow = 0.0d
-              salbtot = 0.0d
-              tau = 0.0d
-              tau_hydro = 0.0d
-              absorb = 0.0d
-              asymtot = 0.0d
-              back = 0.0d
+              KEXTATMO = 0.0
+              kexttot = 0.0
+              g_coeff = 0.0
+              kextcloud = 0.0
+              kextrain = 0.0
+              kextice = 0.0
+              kextgraupel = 0.0
+              kextsnow = 0.0
+              salbtot = 0.0
+              tau = 0.0
+              tau_hydro = 0.0
+              absorb = 0.0
+              asymtot = 0.0
+              back = 0.0
            
               do 646 nx = 1, ngridx
                  write(xstr,'(i3.3)') nx
@@ -789,10 +789,13 @@ c     write(18,*)'new values snow', kextsn, salbsn, backsn
      .                 AD, BD, ALPHA, GAMMA, PHASEFLAG,
      .                 kextsn, salbsn,backsn, NLEGENsn, LEGENsn,
      $                 LEGEN2sn,LEGEN3sn,LEGEN4sn,'G') 
-               ELSEIF(EM_snow.eq.'snowA'.or.EM_snow.eq.'snowB'.or.
-     $                 EM_snow.eq.'roset'.or.EM_snow(1:3).eq.'Kim' ) THEN 
-                  call MIE_densitysizedep_parameterization(LAM,M_ice,m_air,
-     $                 a_msnow,b_snow,EM_snow,RAD1,RAD2,NUMRAD,MAXLEG,
+               ELSEIF(EM_snow.eq.'snowA'.or.
+     $                 EM_snow.eq.'snowB'.or.
+     $                 EM_snow.eq.'roset'.or.
+     $                 EM_snow(1:3).eq.'Kim' ) THEN 
+                  call MIE_densitysizedep_parameterization(LAM, M_ice,
+     $                 m_air, a_msnow, b_snow, EM_snow,
+     $                 RAD1,RAD2,NUMRAD,MAXLEG,
      .                 AD, BD, ALPHA, GAMMA, PHASEFLAG,
      .                 kextsn, salbsn,backsn, NLEGENsn, LEGENsn,
      $                 LEGEN2sn,LEGEN3sn,LEGEN4sn,'G')
