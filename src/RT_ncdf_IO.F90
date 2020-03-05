@@ -808,7 +808,8 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NSTOKES,&
      &input_file,micro_phys,origin_str)
   use netcdf
   use nctoys, only : check_nc
-  use variables, only : nelv, elevations, n_freq, nlyr, ngridx, ngridy, hgt_tmp, FREQ, lat, lon, PBLH
+  use variables, only : nelv, elevations, n_freq, nlyr, ngridx, ngridy, hgt_tmp,&
+       & FREQ, lat, lon, PBLH, qidx
   implicit none
 
   integer, intent(in) :: ncflen
@@ -829,7 +830,7 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NSTOKES,&
   integer :: var_qr_id, var_qs_id, var_qg_id, var_qi_id, var_wd_id, var_ws_id
   integer :: var_kextqc_id, var_kextqr_id, var_kextqs_id
   integer :: var_kextqg_id, var_kextqi_id, var_kextatm_id, var_kexttot_id
-  integer :: var_salbtot_id, var_backsct_id, var_gcoeff_id
+  integer :: var_salbtot_id, var_backsct_id, var_gcoeff_id, var_qidx_id
   integer, dimension(NSTOKES) :: stokes_var
   !real(kind=4), dimension(NTIME) :: TIMELINE
   integer :: NANGLES !!nelv, 
@@ -890,7 +891,10 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NSTOKES,&
   status = nf90_def_var(ncid, "alb_tot", NF90_REAL4, (/xn_id, yn_id, lyr_id, freq_id, time_id/), var_salbtot_id)
   status = nf90_def_var(ncid, "back_scatt", NF90_REAL4, (/xn_id, yn_id, lyr_id, freq_id, time_id/), var_backsct_id)
   status = nf90_def_var(ncid, "g_coeff", NF90_REAL4, (/xn_id, yn_id, lyr_id, freq_id, time_id/), var_gcoeff_id)
- 
+
+  ! profile quality index
+  status = nf90_def_var(ncid, "QIDX", NF90_INT4, (/xn_id, yn_id, time_id/), var_qidx_id)
+  
   ! grid-based variables
   status = nf90_def_var(ncid, "xn", NF90_INT, (/ xn_id /), var_xid)  ! time_id
   status = nf90_def_var(ncid, "yn", NF90_INT, (/ yn_id /), var_yid)   ! time_id
@@ -1074,6 +1078,12 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NSTOKES,&
   status = nf90_put_att(ncid, var_gcoeff_id, "units", "-")
   status = nf90_put_att(ncid, var_gcoeff_id, "_FillValue",-999.9)
 
+  ! ***** Quality index
+  status = nf90_put_att(ncid, var_qidx_id, "short_name","qidx")
+  status = nf90_put_att(ncid, var_qidx_id, "long_name","Quality index")
+  status = nf90_put_att(ncid, var_qidx_id, "units", "-")
+  status = nf90_put_att(ncid, var_qidx_id, "_FillValue",-99)
+  status = nf90_put_att(ncid, var_qidx_id, "note", "15=full quality")
 
   ! ***** Grid variables 
   status = nf90_put_att(ncid, var_xid, "short_name", "Xn")
@@ -1094,15 +1104,16 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NSTOKES,&
   status = nf90_put_att(ncid, var_lonid, "units", "DEG")
 
   status = nf90_put_att(ncid,NF90_GLOBAL,"Input_data", input_file)
-  status = nf90_put_att(ncid,NF90_GLOBAL,"Wyosonde_station", trim(origin_str))
+  status = nf90_put_att(ncid,NF90_GLOBAL,"Origine Information", trim(origin_str))
   status = nf90_put_att(ncid,NF90_GLOBAL,"Hydrometeor_Microphysics", micro_phys)
   status = nf90_put_att(ncid,NF90_GLOBAL,"Contact","Pablo.Saavedra@uib.no")
   status = nf90_put_att(ncid,NF90_GLOBAL,"Institution","Geophysical Institute, University of Bergen")
-
+  status = nf90_put_att(ncid,NF90_GLOBAL,"License","CC-BY-SA")
   ! End definitions
   status = nf90_enddef(ncid)
 
   ! Writting variables that won't change during calculation:
+  status = nf90_put_var(ncid, var_qidx_id, qidx)
   status = nf90_put_var(ncid, var_blh_id, PBLH)
   
 
@@ -1133,19 +1144,6 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   use netcdf
   use variables, only : nx_in, nx_fin, ny_in, ny_fin, timeidx, nx, ny, UnixTime
   use nctoys
-!!$  use, intrinsic :: iso_c_binding
-!!$  
-!!$  implicit none
-!!$
-!!$  ! Interface to the C code for Unix time retrieval:
-!!$  interface
-!!$     function F2UnixTime(datum, ntime) result(val) bind(c, name='F2UnixTime')
-!!$       use, intrinsic :: iso_c_binding
-!!$       integer(kind=c_int) :: ntime
-!!$       integer(kind=c_int) :: datum(:,:)
-!!$       real(kind=c_double) :: val
-!!$     end function F2UnixTime
-!!$  end interface
   
   character(len=*), intent(in) :: OUT_FILE
   real(kind=8), intent(in) :: MU_VALUES(NUMMU), HEIGHT(NOUTLEVELS), OUTVAR(NUMMU,NSTOKES,2,NOUTLEVELS)
