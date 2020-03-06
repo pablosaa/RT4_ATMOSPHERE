@@ -1332,7 +1332,7 @@ end subroutine storencdf
 
 subroutine MP_storencdf(OUT_FILE, time_len, i_freq)
   use netcdf
-  use variables, only : nx, ny, kextcloud, KEXTATMO, &
+  use variables, only : nx, ny, nlyr, kextcloud, KEXTATMO, &
        kextrain, kextice, kextsnow, kextgraupel, &
        cloud_water, rain_water, cloud_ice, snow, graupel, &
        salbtot, back, g_coeff
@@ -1340,11 +1340,11 @@ subroutine MP_storencdf(OUT_FILE, time_len, i_freq)
   implicit none
 
   character(len=*), intent(in) :: OUT_FILE
-  integer, intent(in) :: time_len, i_freq, y_grid, x_grid, NLYR
-  real(kind=8), intent(in) :: TEMP(0:NLYR), PRESS(0:NLYR), RH(0:NLYR)  ! 0: because surface values
-  real(kind=8), intent(in) :: LAYERS(NLYR), QV(NLYR), QC(NLYR), WD(NLYR), WS(NLYR)
-  real(kind=8), intent(in) :: KEXTTOT(NLYR), KEXTATM(NLYR), KEXTQC(NLYR)
-  real(kind=8), intent(in) :: ALBEDO(NLYR), BACKSCATT(NLYR), GCOEFF(NLYR)
+  integer, intent(in) :: time_len, i_freq
+  real(kind=8) :: TEMP(0:NLYR), PRESS(0:NLYR), RH(0:NLYR)  ! 0: because surface values
+  real(kind=8) :: LAYERS(NLYR), QV(NLYR), QC(NLYR), WD(NLYR), WS(NLYR)
+  real(kind=8) :: KEXTTOT(NLYR), KEXTATM(NLYR), KEXTQC(NLYR)
+  real(kind=8) :: ALBEDO(NLYR), BACKSCATT(NLYR), GCOEFF(NLYR)
 
   ! internal variables
   integer :: status, ncid, VarId
@@ -1354,6 +1354,10 @@ subroutine MP_storencdf(OUT_FILE, time_len, i_freq)
   real(kind=8) :: AllFreq(30), freq
   integer :: freq_len
 
+
+  ! Assigning temporal variables:
+  TEMP = temp_lev(nx, ny, :)
+  
   ncfile = OUT_FILE
   status = NF90_OPEN(ncfile, MODE=NF90_WRITE, NCID=ncid)
   if(status/=NF90_NOERR) stop 'Opening the NetCDF to add'
@@ -1372,151 +1376,151 @@ subroutine MP_storencdf(OUT_FILE, time_len, i_freq)
   ! Writting the 2m Temperature
   status = nf90_inq_varid(ncid, "T2m", VarId)
   if(status /= nf90_NoErr) stop 'T2m variable ID cannot be read!'
-  status = nf90_put_var(ncid,VarId, TEMP(0:0), start=(/x_grid , y_grid, time_len/), count=(/1,1,1/))
+  status = nf90_put_var(ncid,VarId, TEMP(0:0), start=(/nx , ny, time_len/), count=(/1,1,1/))
   if(status /= nf90_NoErr) stop 'T2m variable cannot be written!'
 
   ! Writting the 2m RH
   status = nf90_inq_varid(ncid, "RH2m", VarId)
   if(status /= nf90_NoErr) stop 'RH2m variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, RH(0:0),  start=(/x_grid, y_grid, time_len/), count=(/1,1,1/))
+  status = nf90_put_var(ncid, VarId, RH(0:0),  start=(/nx, ny, time_len/), count=(/1,1,1/))
   
   ! Writting the 2m Air Pressure
   status = nf90_inq_varid(ncid, "P2m", VarId)
   if(status /= nf90_NoErr) stop 'Air pressure variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, PRESS(0:0),  start=(/x_grid, y_grid, time_len/), count=(/1,1,1/))
+  status = nf90_put_var(ncid, VarId, PRESS(0:0),  start=(/nx, ny, time_len/), count=(/1,1,1/))
   
   ! ********** Writting Profile Variables ****************************
   ! Writting the Temperature
   status = nf90_inq_varid(ncid, "temp", VarId)
   if(status /= nf90_NoErr) stop 'Temperature profile ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, TEMP, start=(/x_grid, y_grid, 1, time_len/),count=(/1,1,NLYR,1/))
+  status = nf90_put_var(ncid, VarId, TEMP, start=(/nx, ny, 1, time_len/),count=(/1,1,NLYR,1/))
   if(status /= nf90_NoErr) stop 'Temperature profile cannot be written!'
 
   ! Writting the Pressure
   status = nf90_inq_varid(ncid, "press", VarId)
   if(status /= nf90_NoErr) stop 'Pressure profile ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, PRESS, start=(/x_grid, y_grid, 1, time_len/),count=(/1,1,NLYR,1/))
+  status = nf90_put_var(ncid, VarId, PRESS, start=(/nx, ny, 1, time_len/),count=(/1,1,NLYR,1/))
   if(status /= nf90_NoErr) stop 'Pressure profile cannot be written!'
 
   ! Writting the Relative Humidity
   status = nf90_inq_varid(ncid, "rh", VarId)
   if(status /= nf90_NoErr) stop 'RH profile ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, RH, start=(/x_grid, y_grid ,1, time_len/),count=(/1,1,NLYR,1/))
+  status = nf90_put_var(ncid, VarId, RH, start=(/nx, ny ,1, time_len/),count=(/1,1,NLYR,1/))
   if(status /= nf90_NoErr) stop 'RH profile cannot be written!'
 
   ! Writting the QV variable
   status = nf90_inq_varid(ncid, "qv", VarId)
   if(status /= nf90_NoErr) stop 'QV variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, QV, start=(/x_grid, y_grid, 1, time_len/),count=(/1,1,NLYR,1/))
+  status = nf90_put_var(ncid, VarId, QV, start=(/nx, ny, 1, time_len/),count=(/1,1,NLYR,1/))
   if(status /= nf90_NoErr) stop 'QV cannot be written!'
   ! Writting the QC variable
   status = nf90_inq_varid(ncid, "qc", VarId)
   if(status /= nf90_NoErr) stop 'QC variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, QC, start=(/x_grid, y_grid, 1, time_len/),count=(/1,1,NLYR,1/))
+  status = nf90_put_var(ncid, VarId, QC, start=(/nx, ny, 1, time_len/),count=(/1,1,NLYR,1/))
   if(status /= nf90_NoErr) stop 'QC cannot be written!'
 
   ! Writting the QR variable
   status = nf90_inq_varid(ncid, "qr", VarId)
   if(status /= nf90_NoErr) stop 'QR variable ID cannot be read!'
   status = nf90_put_var(ncid, VarId, rain_water(nx, ny, :), &
-       start=(/x_grid, y_grid, 1, time_len/),count=(/1, 1, NLYR, 1/) )
+       start=(/nx, ny, 1, time_len/),count=(/1, 1, NLYR, 1/) )
   if(status /= nf90_NoErr) stop 'QR cannot be written!'
 
   ! Writting the QI variable
   status = nf90_inq_varid(ncid, "qi", VarId)
   if(status /= nf90_NoErr) stop 'QI variable ID cannot be read!'
   status = nf90_put_var(ncid, VarId, cloud_ice(nx, ny, :), &
-       &start=(/x_grid, y_grid, 1, time_len/),count=(/1, 1, NLYR, 1/) )
+       &start=(/nx, ny, 1, time_len/),count=(/1, 1, NLYR, 1/) )
   if(status /= nf90_NoErr) stop 'QI cannot be written!'
 
   ! Writting the QS variable
   status = nf90_inq_varid(ncid, "qs", VarId)
   if(status /= nf90_NoErr) stop 'QS variable ID cannot be read!'
   status = nf90_put_var(ncid, VarId, snow(nx, ny, :), &
-       &start=(/x_grid, y_grid, 1, time_len/),count=(/1, 1, NLYR, 1/) )
+       &start=(/nx, ny, 1, time_len/),count=(/1, 1, NLYR, 1/) )
   if(status /= nf90_NoErr) stop 'QS cannot be written!'
 
   ! Writting the QG variable
   status = nf90_inq_varid(ncid, "qg", VarId)
   if(status /= nf90_NoErr) stop 'QG variable ID cannot be read!'
   status = nf90_put_var(ncid, VarId, graupel(nx, ny, :), &
-       &start=(/x_grid, y_grid, 1, time_len/),count=(/1, 1, NLYR, 1/))
+       &start=(/nx, ny, 1, time_len/),count=(/1, 1, NLYR, 1/))
   if(status /= nf90_NoErr) stop 'QG cannot be written!'
 
   ! Writting the Wind Direction variable
   status = nf90_inq_varid(ncid, "wd", VarId)
   if(status /= nf90_NoErr) stop 'WD variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, WD, start=(/x_grid, y_grid, 1, time_len/),count=(/1,1,NLYR,1/))
+  status = nf90_put_var(ncid, VarId, WD, start=(/nx, ny, 1, time_len/),count=(/1,1,NLYR,1/))
   if(status /= nf90_NoErr) stop 'WD cannot be written!'
   ! Writting the Wind Speed variable
   status = nf90_inq_varid(ncid, "ws", VarId)
   if(status /= nf90_NoErr) stop 'WS variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, WS, start=(/x_grid, y_grid, 1, time_len/),count=(/1,1,NLYR,1/))
+  status = nf90_put_var(ncid, VarId, WS, start=(/nx, ny, 1, time_len/),count=(/1,1,NLYR,1/))
   if(status /= nf90_NoErr) stop 'WS cannot be written!'
 
   ! ---------------------------------------
   ! Writting the ATMOSPHERIC Extintion coeff
   status = nf90_inq_varid(ncid, "kext_atm", VarId)
   if(status /= nf90_NoErr) stop 'KEXT_ATMOS variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, KEXTATM, start=(/x_grid, y_grid, 1, i_freq, time_len/),count=(/1,1,NLYR,1,1/))
+  status = nf90_put_var(ncid, VarId, KEXTATM, start=(/nx, ny, 1, i_freq, time_len/),count=(/1,1,NLYR,1,1/))
   if(status /= nf90_NoErr) stop 'KEXT_ATMOS cannot be written!'
   
   ! Writting the Total Extintion coeff
   status = nf90_inq_varid(ncid, "kext_tot", VarId)
   if(status /= nf90_NoErr) stop 'KEXT_TOTAL variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, KEXTTOT, start=(/x_grid, y_grid, 1, i_freq, time_len/),count=(/1,1,NLYR,1,1/))
+  status = nf90_put_var(ncid, VarId, KEXTTOT, start=(/nx, ny, 1, i_freq, time_len/),count=(/1,1,NLYR,1,1/))
   if(status /= nf90_NoErr) stop 'KEXT_TOT cannot be written!'
 
   ! Writting the Cloud Extintion coeff
   status = nf90_inq_varid(ncid, "kext_qc", VarId)
   if(status /= nf90_NoErr) stop 'KEXT_CLOUD variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, KEXTQC, start=(/x_grid, y_grid, 1, i_freq, time_len/),count=(/1,1,NLYR,1,1/))
+  status = nf90_put_var(ncid, VarId, KEXTQC, start=(/nx, ny, 1, i_freq, time_len/),count=(/1,1,NLYR,1,1/))
   if(status /= nf90_NoErr) stop 'KEXT_CLOUD cannot be written!'
 
   ! Writting the Rain Extintion coeff
   status = nf90_inq_varid(ncid, "kext_qr", VarId)
   if(status /= nf90_NoErr) stop 'KEXT_RAIN variable ID cannot be read!'
   status = nf90_put_var(ncid, VarId, kextrain(nx, ny, :), &
-       &start=(/x_grid, y_grid, 1, i_freq, time_len/), count=(/1,1,NLYR,1,1/) )
+       &start=(/nx, ny, 1, i_freq, time_len/), count=(/1,1,NLYR,1,1/) )
   if(status /= nf90_NoErr) stop 'KEXT_RAIN cannot be written!'
 
   ! Writting the ICE Extintion coeff
   status = nf90_inq_varid(ncid, "kext_qi", VarId)
   if(status /= nf90_NoErr) stop 'KEXT_ICE variable ID cannot be read!'
   status = nf90_put_var(ncid, VarId, kextice(nx, ny, :), &
-       &start=(/x_grid, y_grid, 1, i_freq, time_len/), count=(/1,1,NLYR,1,1/) )
+       &start=(/nx, ny, 1, i_freq, time_len/), count=(/1,1,NLYR,1,1/) )
   if(status /= nf90_NoErr) stop 'KEXT_ICE cannot be written!'
 
   ! Writting the SNOW Extintion coeff
   status = nf90_inq_varid(ncid, "kext_qs", VarId)
   if(status /= nf90_NoErr) stop 'KEXT_SNOW variable ID cannot be read!'
   status = nf90_put_var(ncid, VarId, kextsnow(nx, ny, :), &
-       &start=(/x_grid, y_grid, 1, i_freq, time_len/), count=(/1,1,NLYR,1,1/) )
+       &start=(/nx, ny, 1, i_freq, time_len/), count=(/1,1,NLYR,1,1/) )
   if(status /= nf90_NoErr) stop 'KEXT_SNOW cannot be written!'
 
   ! Writting the GRAUPEL Extintion coeff
   status = nf90_inq_varid(ncid, "kext_qg", VarId)
   if(status /= nf90_NoErr) stop 'KEXT_GRAUPEL variable ID cannot be read!'
   status = nf90_put_var(ncid, VarId, kextgraupel(nx, ny, :), &
-       &start=(/x_grid, y_grid, 1, i_freq, time_len/), count=(/1,1,NLYR,1,1/) )
+       &start=(/nx, ny, 1, i_freq, time_len/), count=(/1,1,NLYR,1,1/) )
   if(status /= nf90_NoErr) stop 'KEXT_GRAUPEL cannot be written!'
 
   ! Writting the Total Albedo coeff
   status = nf90_inq_varid(ncid, "alb_tot", VarId)
   if(status /= nf90_NoErr) stop 'TOTAL Albedo variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, ALBEDO, start=(/x_grid, y_grid, 1, i_freq, time_len/),count=(/1,1,NLYR,1,1/))
+  status = nf90_put_var(ncid, VarId, ALBEDO, start=(/nx, ny, 1, i_freq, time_len/),count=(/1,1,NLYR,1,1/))
   if(status /= nf90_NoErr) stop 'TOTAL  ALBEDO cannot be written!'
 
   ! Writting the Backscattering coeff
   status = nf90_inq_varid(ncid, "back_scatt", VarId)
   if(status /= nf90_NoErr) stop 'Backscattering variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, BACKSCATT, start=(/x_grid, y_grid, 1, i_freq, time_len/),count=(/1,1,NLYR,1,1/))
+  status = nf90_put_var(ncid, VarId, BACKSCATT, start=(/nx, ny, 1, i_freq, time_len/),count=(/1,1,NLYR,1,1/))
   if(status /= nf90_NoErr) stop 'Backscattering cannot be written!'
 
   ! Writting the asymetry factor
   status = nf90_inq_varid(ncid, "g_coeff", VarId)
   if(status /= nf90_NoErr) stop 'G-factor variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, GCOEFF, start=(/x_grid, y_grid, 1, i_freq, time_len/),count=(/1,1,NLYR,1,1/))
+  status = nf90_put_var(ncid, VarId, GCOEFF, start=(/nx, ny, 1, i_freq, time_len/),count=(/1,1,NLYR,1,1/))
   if(status /= nf90_NoErr) stop 'G-factor cannot be written!'
   
   status = NF90_CLOSE(ncid)
@@ -1768,6 +1772,13 @@ end subroutine Wind_UV2speeddir
 ! -----------------------------------------------------------------------
 subroutine Calculate_GeopotentialZ(NX, NY, NZ, NT, T, P, MIXR, Z) 
   implicit none
+  interface
+     elemental function T2TV(T, MIXR) result (TV)
+       implicit none
+       real(kind=8), intent(in) :: T, MIXR
+       real(kind=8) :: TV
+     end function T2TV
+  end interface
   integer, intent(in) :: NX, NY, NZ, NT
   real(kind=8), intent(in), dimension(NX,NY,0:NZ,NT) :: T, P
   real(kind=8), intent(in), dimension(NX,NY,NZ,NT) :: MIXR
@@ -1782,7 +1793,7 @@ subroutine Calculate_GeopotentialZ(NX, NY, NZ, NT, T, P, MIXR, Z)
 
   allocate(TV(NX, NY, NZ, NT) )
   !call Calculate_VirtualTemperature(NX, NY, NZ, NT, T(:,:,1:NZ,:), MIXR, TV)
-  call T2TV(T(:,:,1:NZ,:), MIXR, TV)
+  TV = T2TV(T(:,:,1:NZ,:), MIXR)
   
   del_P = P(:,:,0:NZ-1,:) - P(:,:,1:NZ,:)
 
@@ -1827,11 +1838,11 @@ subroutine Calculate_VirtualTemperature(NX, NY, NZ, NT, T, MIXR, TV)
   return
 end subroutine Calculate_VirtualTemperature
 
-elemental subroutine T2TV(T, MIXR, TV)
+elemental function T2TV(T, MIXR) result (TV)
   implicit none
-  real, intent(in) :: T, MIXR
-  real, intent(out) :: TV
+  real(kind=8), intent(in) :: T, MIXR
+  real(kind=8) :: TV
 
   TV = T*(1.0 + MIXR*1.604)/(1.0 + MIXR)
   return
-end subroutine T2TV
+end function T2TV
