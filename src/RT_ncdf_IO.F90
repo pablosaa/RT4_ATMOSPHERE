@@ -171,20 +171,354 @@ contains
     
   end function GetCH2UnixTime
 
-  subroutine mykakes(A,B)
-    implicit none
-    real, intent(in), dimension(:,:) :: A
-    real, intent(out), dimension(:) :: B
-    integer :: i,j,k
-
-    i=size(A,1)
-    j=size(A,2)
-
-    B = reshape(A, (/i*j/))
-    return
-  end subroutine mykakes
-
 end module nctoys
+
+module meteo_tools
+  implicit none
+contains
+  ! --------------------------------------------------------------------
+  ! Subroutine to interpolate extra observations angles in case the
+  ! input value is out of limits, extrapolation is attended with the
+  ! two first (lower extrapolation) or last (upper extrapolation)
+  ! values of the vector.
+  ! ---
+  subroutine interp1_1D(Xin, Yin, Nin, X0, N0, Xout, Nout, Yout, Nstk, Nflx, Nlev)
+  
+  ! Interpolated abssice values must increase monotonically, 
+  ! the ordenate values can be decreasing or increasing
+  ! Repeated values in Xin and X0 are omitted
+  
+  implicit none
+  integer, intent(in) :: Nin, N0, Nstk, Nflx, Nlev, Nout
+  real(kind=8), intent(in) :: Xin(Nin), X0(N0), Yin(Nin,Nstk,Nflx,Nlev)
+  real(kind=8), intent(out):: Xout(Nout)
+  real(kind=8), intent(out):: Yout(Nout,Nstk,Nflx,Nlev)
+  integer :: h, idx, idn, iout
+  real(kind=8) :: a, b, Fa(Nstk, Nflx, Nlev), Fb(Nstk, Nflx, Nlev), F0(Nstk, Nflx, Nlev)
+  real(kind=8) :: eps = 1.0E-4
+  
+  ! union of Xin and X0 sets
+  Yout = -69.8
+  Yout(1:Nin,:,:,:) = Yin
+  
+  Xout = -69.0
+  Xout(1:Nin) = Xin
+    
+  do h = 1, N0
+     !if(any(abs(Xout-X0(h)).LT.eps)) cycle
+     !iout = iout + 1
+     if(X0(h).GT.maxval(Xout)) then
+        idx = maxloc(Xout,1)+1
+        a = Xout(idx-2)
+        b = Xout(idx-1)
+        Fa = Yout(idx-2,:,:,:)
+        Fb = Yout(idx-1,:,:,:)
+     else if(X0(h).LT.minval(Xout)) then
+        idx = 1
+        a = Xout(idx)
+        b = Xout(idx+1)
+        Fa = Yout(idx,:,:,:)
+        Fb = Yout(idx+1,:,:,:)
+     else
+        idx = minloc(Xout,DIM=1,MASK=X0(h)<=Xout)
+        a = Xout(idx-1)
+        b = Xout(idx)
+        Fa = Yout(idx-1,:,:,:)
+        Fb = Yout(idx,:,:,:)
+     end if
+     
+     if(abs(X0(h)-b).LT.eps) then
+        F0 = Fb
+     else if(abs(X0(h)-a).LT.eps) then
+        F0 = Fa
+     else
+        F0 = Fa + (X0(h)-a)*(Fb-Fa)/(b-a)
+     end if
+     idn = Nin+h-1
+     Xout(idx+1:idn+1) = Xout(idx:idn)
+     Xout(idx) = X0(h)
+
+     Yout(idx+1:idn+1, :, :, :) = Yout(idx:idn,:,:,:)
+     Yout(idx, :, :, :)   = F0
+     
+  end do
+  
+end subroutine interp1_1D
+! ----/
+
+! ---------------------------------------------------------------
+! ELEMENTAL FUNCTION Convert mixing ratio to Relative Humidity.
+! HUMIDITY CONVERSION FORMULAS
+! Calculation formulas for humidity (B210973EN-F)
+! By (c) VAISALA 2003
+! https://www.hatchability.com/Vaisala.pdf
+!
+! ---
+! (c) 2019 Pablo Saavedra G.
+! Geophysical Institute, University of Bergen
+! See LICENSE
+!
+! ---
+! -> MIXR: Vapour mixing ratio [kg/kg]
+! -> P   : Pressure [hPa]
+! -> T   : Temperature [K]
+! <- RH  : Relative Humidity [%]
+elemental function mixr_to_rh(MIXR, P, T) result(RH)
+  implicit none
+  real(kind=8), intent(in) :: MIXR, P, T
+  real(kind=8) :: RH
+
+  integer :: i, j
+  real :: PWS, etha, A
+  real, parameter :: COEFF = 2.16679 ! [g K J^-1]
+  real, parameter :: Tc = 647.096  ! critical temperature [K]
+  real, parameter :: Pc = 220640   ! critical pressure [hPa]
+  real, parameter :: B  = 0.6219907 ! constant for air [kg/kg]
+  real, parameter :: CC(6) = (/ -7.85951783, 1.84408259, &
+       & -11.7866497, 22.6807411, -15.9618719, 1.80122502 /)
+  real, parameter :: EE(6) = (/1.0, 1.5, 3.0, 3.5, 4.0, 7.5/)
+
+  etha = 1.0d0 - T/Tc
+  A = 0.0d0
+  do i=1, 6
+     A = A + CC(i)*(etha**EE(i))
+  end do
+  PWS = Pc*exp(A*Tc/T)
+  !RH = 1E-3*MIXR*T/PWS/COEFF
+  !RH = 100*PW/PWS
+  RH = 100*MIXR*P/(MIXR + B)/PWS
+  return
+end function mixr_to_rh
+! ----/
+
+! -------------------------------------------------------------------
+! ELEMENTAL Function to convert Specific [kg/kg] to
+! mixing rations [kg/kg] quantitis.
+! -> Q_x  : Specific content in [kg/kg]
+! <- mixr : Mixing ratio in [kg/kg]
+! ---
+elemental function qx_to_mixr(Q_x) result(MIXR)
+  implicit none
+  real(kind=8), intent(in) :: Q_x
+  real(kind=8) :: MIXR
+
+  MIXR = Q_x/(1.0-Q_x)
+  return
+end function qx_to_mixr
+! ----/
+
+! _________________________________________________________________
+! ELEMENTAL FuNCTION Specific Humidity to Relative Humidity
+! -> Qv : Specific Humidity [kg/kg]
+! -> P  : Pressure [hPa]
+! -> T  : Temperature [K]
+! <- RH : Relative Humidity [%]
+! ---
+elemental function qv_to_rh(QV, P, T) result(RH)
+  implicit none
+  real(kind=8), intent(in) :: QV, P, T
+  real(kind=8) :: RH
+
+  ! Local variables:
+  real(kind=8) :: MIXR
+  
+  ! Converting Specific Humidity to Mixing Ratio:
+  MIXR = qx_to_mixr(QV)
+  
+  RH = mixr_to_rh(MIXR, P, T)
+  !call mixr2rh(nx, ny, nz, nt, MIXR, P, T, RH)
+  return
+end function qv_to_rh
+! ----/
+
+! ____________________________________________________________________
+! ELEMENTAL FUNCTION TO CONVERT WRF perturbation potential temperature
+! (theta-t0) to Temperature.
+!
+! Based on "[Wrf-users] perturbation potential temperature"
+! https://mailman.ucar.edu/pipermail/wrf-users/2010/001896.html
+! Where thete: Potential Temperature and T0=300K
+! kappa: the Poisson constant (kappa = R/c_p), the ratio of the gas
+! constant R to the specific heat at constant pressure c_p.
+!
+! -> Tper : Perturbation potential temperature [K]
+! -> P    : Pressure [hPa]
+! <- T    : Temperature [K]
+!
+! ---
+elemental function PERTHETA2T(Tper, P) result(T)
+  implicit none
+!  integer, intent(in) :: nx, ny, nz, nt
+  real(kind=8), intent(in) :: Tper, P
+  real(kind=8) :: T
+
+  real(kind=8) :: theta
+  real, parameter :: T0 = 300.0  ! [K]
+  real, parameter :: P0 = 1000.0 ! standard pressure [hPa]
+  real, parameter :: kappa = 0.2854 !  For dry air
+
+  theta = Tper + T0    ! Potential Temperature [K]
+  T = theta*(P/P0)**kappa   ! [K]
+  return
+end function PERTHETA2T
+! ----/
+
+! __________________________________________________________________
+! Subroutine to convert Wind U and V component into
+! wind speed, and direction
+! -> U, V : Wind components U and V [m/s]
+! <- WS   : Wind speed [m/s]
+! <- WD   : Wind direction [deg]
+!
+! (c) 2019, Pablo Saavedra G.
+! Geophysical Institute, University of Bonn
+! ---
+elemental subroutine Wind_UV2speeddir(U, V, WS, WD)
+  implicit none
+  real(kind=8), intent(in) :: U, V
+  real(kind=8), intent(out) :: WS, WD
+  real, parameter :: PI2deg = 45.0/atan(1.0)
+  
+  WS = sqrt( U*U + V*V)
+  WD = modulo(360.0 - atan2(U, V)*PI2deg, 360.0)
+  return
+end subroutine Wind_UV2speeddir
+!!$subroutine Wind_UV2speeddir(nx, ny, nz, nt, U, V, WS, WD)
+!!$  implicit none
+!!$  integer, intent(in) :: nx, ny ,nz, nt
+!!$  real(kind=8), intent(in), dimension(nx,ny,nz,nt) :: U, V
+!!$  real(kind=8), intent(out), dimension(nx,ny,nz,nt) :: WS, WD
+!!$  real, parameter :: PI2deg = 45.0/atan(1.0)
+!!$  
+!!$  WS = sqrt( U*U + V*V)
+!!$  WD = modulo(360.0 - atan2(U, V)*PI2deg, 360.0)
+!!$  return
+!!$end subroutine Wind_UV2speeddir
+! ----
+
+
+! _______________________________________________________________________
+! Subroutine to calculate the Geopotential Height given T, P, MIXR
+!
+! - INPUT:
+! * T(NX, NY, NZ, NT)    : Temperature [K]
+! * P(NX, NY, 0:NZ, NT)  : Pressure [hPa]
+! * Qv(NX, NY, NZ, NT)   : Specific Humidity [kg/kg]
+! - OUTPUT:
+! * Z(NX, NY, NZ, NT)    : Geopotential Height [km] 
+!
+! ---
+! (c) 2020, Pablo Saavedra G.
+! Geophysical Institute, University of Bergen
+! See LICENSE
+! -----------------------------------------------------------------------
+function Calculate_GeopotentialZ(T, P, Qv) result(Z) 
+  implicit none
+  real(kind=8), intent(in), dimension(:,:,:,:) :: T, P, Qv
+  real(kind=8), allocatable :: Z(:,:,:,:)
+
+  ! ** local variables
+  integer :: i, NZ
+  real(kind=8), allocatable, dimension(:,:,:,:) :: MIXR, TV, del_P, TVdP !
+  real, parameter :: Rd = 287         ! [J/kg/K] dry air gass constant
+  real, parameter :: g0 = 9.807       ! [m/s^2]  gravity constant
+
+
+  !allocate(TV(NX, NY, NZ, NT) )
+  !call Calculate_VirtualTemperature(NX, NY, NZ, NT, T(:,:,1:NZ,:), MIXR, TV)
+  MIXR = qx_to_mixr(Qv)   ! [kg/kg]
+  TV = T2TV(T, MIXR)
+
+  NZ = size(T, 3)
+  if(size(P,3).NE.NZ+1) stop 'Layer dimension for P needs to be 1 nore than Z'
+  del_P = P(:,:,0:NZ-1,:) - P(:,:,1:NZ,:)
+
+  ! temporal integrable variable = Tv/P *dP
+  TVdP = TV*del_P/P(:,:,1:NZ,:)
+
+  ! Initializing Z = 0. source T
+  Z = T*0.0d0
+  do i = 1, NZ
+     Z(:,:,i,:) = sum(TVdP(:,:,1:i,:), dim=3)
+  end do
+  Z = (1E-3*Rd/g0)*Z  ! converting to [km]
+
+  return
+end function Calculate_GeopotentialZ
+! -----/
+
+! _______________________________________________________________________
+! Subroutine to calculate the Virtual Temperature given T, MIXR
+!
+! - INPUT:
+! * T(NX, NY, NZ, NT)    : Temperature [K]
+! * MIXR(NX, NY, NZ, NT) : Mixing ration [kg/kg]
+! - OUTPUT:
+! * Tv(NX, NY, NZ, NT)   : Virtual Temperature [K] 
+!
+!!$subroutine Calculate_VirtualTemperature(NX, NY, NZ, NT, T, MIXR, TV)
+!!$  implicit none
+!!$  integer, intent(in) :: NX, NY, NZ, NT
+!!$  real(kind=8), intent(in), dimension(NX, NY, NZ, NT) :: T, MIXR
+!!$  real(kind=8), intent(out), dimension(NX, NY, NZ, NT) :: TV
+!!$
+!!$  ! ** local variables
+!!$  ! Rd gas constant dry air, Rv gas constant water vapour:
+!!$  real, parameter :: Rd = 287, Rv = 461.5  ! [J/kg/K]
+!!$  real, parameter :: eps = Rd/Rv
+!!$
+!!$  TV = T*(1.d0 + MIXR/eps)/(1.d0 + MIXR)
+!!$  return
+!!$end subroutine Calculate_VirtualTemperature
+
+! --------------------------------------------------------------------
+! Function convert Temperature to Virtual Temp.
+! -> T    : Temperature [K]
+! -> MIXR : Vapour Mixing ratio [kg/kg]
+! <- Tv   : Virtual Temperature [K]
+! ---
+! (c) 2020, Pablo Saavedra G.
+! Geophysical Institute, University of Bergen
+! See LICENSE
+! ---
+elemental function T2TV(T, MIXR) result (TV)
+  implicit none
+  real(kind=8), intent(in) :: T, MIXR
+  real(kind=8) :: TV
+  ! ** local variables
+  ! Rd gas constant dry air, Rv gas constant water vapour:
+  real, parameter :: Rd = 287, Rv = 461.5  ! [J/kg/K]
+  real, parameter :: eps = Rv/Rd
+
+  TV = T*(1.0 + MIXR*eps)/(1.0 + MIXR)
+  return
+end function T2TV
+! ----/
+
+! --------------------------------------------------------------------
+! Function to convert kg/kg to kg/m^3
+! -> Qx  : Specific quantity e.g. humidity [kg/kg]
+! -> T   : Temperature [K]
+! -> P   : Pressure [Pa]
+! <- RHOx: Specific quantity [kg/m^3]
+! ---
+elemental function MassRatio2MassVolume(Q_x, T, P ) result(RHO_x)
+  implicit none
+  real(kind=8), intent(in) :: Q_x, T, P
+  real(kind=8) :: RHO_x
+  ! Local variables:
+  real(kind=8) :: Tv
+  real, parameter :: Rd = 287, Rv = 461.5  ! [J/kg/K]
+  
+  Tv = T2TV(T, Q_x)
+  RHO_x = P/Tv/Rd
+  
+  return
+end function MassRatio2MassVolume
+! ----/
+
+end module meteo_tools
+
 
 ! ______________________________________________________________________________________
 ! --------------------------------------------------------------------------------------
@@ -198,7 +532,8 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
   use netcdf
   use variables
   use nctoys
-
+  use meteo_tools
+  
   implicit none
 
   integer, intent(in) :: ncflen
@@ -359,16 +694,22 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
   ! --
   ! 2) Converting vapour mixing ratio to Relative Humidity
   print *, '2. converting Qv to RH'
-  call qv2rh(ngridx, ngridy, 1+nlyr, ntime,&
-       & QV, press_tmp, temp_tmp, relhum_tmp)
+!!$  call qv2rh(ngridx, ngridy, 1+nlyr, ntime,&
+!!$       & QV, press_tmp, temp_tmp, relhum_tmp)
+  relhum_tmp = qv_to_rh(QV, press_tmp, temp_tmp)
+  
   ! --
-  ! 3) Converting specific humidity to vapour mixing ratio
-  print *, '3. converting Qv to mixr'
-  mixr_tmp = QV(:,:,1:nlyr,:)/(1.d0 - QV(:,:,1:nlyr,:))  ! [kg/kg]
+  ! 3) Converting specific humidity units. XXto vapour mixing ratio
+  print *, '3. converting units for  Qv'
+  mixr_tmp = MassRatio2MassVolume(QV(:,:,1:nlyr,:), &
+       temp_tmp(:,:,1:nlyr,:), press_tmp(:,:,1:nlyr,:) )  ! [g/m^3]
+!!$  mixr_tmp = QV(:,:,1:nlyr,:)/(1.d0 - QV(:,:,1:nlyr,:))  ! [kg/kg]
   ! --
   ! 4) Calculating Geopotential Altitude:
-  call Calculate_GeopotentialZ(ngridx, ngridy, nlyr, ntime,&
-       &temp_tmp, press_tmp, mixr_tmp, hgt_tmp(:,:,1:nlyr,:) )
+  hgt_tmp(:,:,1:nlyr,:) = Calculate_GeopotentialZ( &
+       temp_tmp(:,:,1:nlyr,:), press_tmp, QV(:, :, 1:nlyr,:) )
+!!$  call Calculate_GeopotentialZ(ngridx, ngridy, nlyr, ntime,&
+!!$       &temp_tmp, press_tmp, mixr_tmp, hgt_tmp(:,:,1:nlyr,:) )
 
   mixr_tmp = 1.0E3*mixr_tmp   ! [g/kg]
   ! --
@@ -407,6 +748,7 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   use netcdf
   use variables
   use nctoys
+  use meteo_tools
   
   implicit none
 
@@ -426,7 +768,7 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   character(len=30) :: varname
   integer :: i, j, k, NN
   
-  real(kind=8), allocatable, dimension(:,:,:,:) :: U_Vel, V_Vel, mixratio
+  real(kind=8), allocatable, dimension(:,:,:,:) :: U_Vel, V_Vel, mixratio, pertur_T
   character(len=:), allocatable, dimension(:) :: TimeStamp
   ! List of variable names to load (WRF convention)
   character(len=15), dimension(17), parameter :: wrfvarname = [ &
@@ -469,6 +811,7 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   CALL get_dims_allocate_vars(ncid, wrfname)
   
   ! For local variables:
+  allocate(pertur_T(ngridx, ngridy, nlyr, ntime) )
   allocate(mixratio(ngridx, ngridy, 0:nlyr, ntime) )
   allocate(U_Vel(ngridx, ngridy, nlyr, ntime) )
   allocate(V_Vel(ngridx, ngridy, nlyr, ntime) )
@@ -484,40 +827,56 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
      select case(trim(wrfvarname(i) ))
         ! *** Reading for WRF SURFACE variables:
      case('T2')
-        status = nf90_get_var(ncid, VarId, temp_tmp(:, :, 0:0, :))
+        status = nf90_get_var(ncid, VarId, temp_tmp(:, :, 0:0, :), &
+             start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, 1, ntime/) )
      case('PSFC')
-        status = nf90_get_var(ncid, VarId, press_tmp(:, :, 0:0, :))
+        status = nf90_get_var(ncid, VarId, press_tmp(:, :, 0:0, :), &
+             start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, 1, ntime/) )
      case('Q2')
-        status = nf90_get_var(ncid, VarId, mixratio(:, :, 0:0, :))
+        status = nf90_get_var(ncid, VarId, mixratio(:, :, 0:0, :), &
+             start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, 1, ntime/) )
      case('XLAT')
-        status = nf90_get_var(ncid, VarId, lat, start=(/1,1,1/), count=(/ngridx, ngridy, 1/))
+        status = nf90_get_var(ncid, VarId, lat, &
+             start=(/nx_in, ny_in, 1/), count=(/ngridx, ngridy, 1/))
      case('XLONG')
-        status = nf90_get_var(ncid, VarId, lon, start=(/1,1,1/), count=(/ngridx, ngridy, 1/))
+        status = nf90_get_var(ncid, VarId, lon, &
+             start=(/nx_in, ny_in, 1/), count=(/ngridx, ngridy, 1/))
         ! *** Reading for WRF PROFILE variables:
      case('PHB')
-        status = nf90_get_var(ncid, VarId, hgt_tmp)
+        status = nf90_get_var(ncid, VarId, hgt_tmp, &
+             start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, 1, ntime/) )
         hgt_tmp = 1.0E-3*hgt_tmp/9.81  ! [km]
      case('P_HYD')
-        status = nf90_get_var(ncid, VarId, press_tmp(:, :, 1:nlyr, :))
-        press_tmp = press_tmp*1E-2  ! [hPa]
+        status = nf90_get_var(ncid, VarId, press_tmp(:, :, 1:nlyr, :), &
+             start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, nlyr, ntime/) )
+        press_tmp = press_tmp*1.E-2  ! [hPa]
      case('T')
-        status = nf90_get_var(ncid, VarId, temp_tmp(:, :, 1:nlyr, :))
+        status = nf90_get_var(ncid, VarId, pertur_T, &
+             start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, nlyr, ntime/) )
      case('QVAPOR')
-        status = nf90_get_var(ncid, VarId, mixratio(:, :, 1:nlyr, :))
+        status = nf90_get_var(ncid, VarId, mixratio(:, :, 1:nlyr, :), &
+             start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, nlyr, ntime/) )
      case('QCLOUD')
-        status = nf90_get_var(ncid, VarId, cloud_water_tmp)
+        status = nf90_get_var(ncid, VarId, cloud_water_tmp, &
+             start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, nlyr, ntime/) )
      case('QRAIN')
-        status = nf90_get_var(ncid, VarId, rain_water_tmp)
+        status = nf90_get_var(ncid, VarId, rain_water_tmp, &
+             start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, nlyr, ntime/) )
      case('QICE')
-        status = nf90_get_var(ncid, VarId, cloud_ice_tmp)
+        status = nf90_get_var(ncid, VarId, cloud_ice_tmp, &
+             start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, nlyr, ntime/) )
      case('QSNOW')
-        status = nf90_get_var(ncid, VarId, snow_tmp)
+        status = nf90_get_var(ncid, VarId, snow_tmp, &
+             start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, nlyr, ntime/) )
      case('QGRAUP')
-        status = nf90_get_var(ncid, VarId, graupel_tmp)
+        status = nf90_get_var(ncid, VarId, graupel_tmp, &
+             start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, nlyr, ntime/) )
      case('V')
-        status = nf90_get_var(ncid, VarId, V_Vel, start=(/1,2,1,1/) )
+        status = nf90_get_var(ncid, VarId, V_Vel, &
+             start=(/nx_in, ny_in+1 , 1, 1/), count=(/ngridx, ngridy, nlyr, ntime/) )
      case('U')
-        status = nf90_get_var(ncid, VarId, U_Vel, start=(/2,1,1,1/) )
+        status = nf90_get_var(ncid, VarId, U_Vel, &
+             start=(/nx_in+1, ny_in , 1, 1/), count=(/ngridx, ngridy, nlyr, ntime/) )
      case('Times')
         status = nf90_get_var(ncid, VarId, TimeStamp)
 
@@ -530,12 +889,13 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   ! ---
   ! Variables not present in WRF:
   ! 1) Converting Perturbation Potential Temperature to Temperature:
-  call PERTHETA2T(ngridx, ngridy, nlyr, ntime, temp_tmp(:, :, 1:nlyr, :),&
-       & press_tmp(:, :, 1:nlyr, :), temp_tmp(:, :, 1:nlyr, :) )
+  temp_tmp(:, :, 1:nlyr, :) = PERTHETA2T(pertur_T, &
+       & press_tmp(:, :, 1:nlyr, :) )
   
   ! 2) Converting Vapor mixing ratio to Relative Humidity
-  call mixr2rh(ngridx, ngridy, 1+nlyr, ntime,&
-       & mixratio, press_tmp, temp_tmp, relhum_tmp)
+  relhum_tmp = mixr_to_rh(mixratio, press_tmp, temp_tmp)
+  !call mixr2rh(ngridx, ngridy, 1+nlyr, ntime,&
+  !     & mixratio, press_tmp, temp_tmp, relhum_tmp)
   mixr_tmp = 1E3*mixratio(:, :, 1:nlyr, :)   ! [g/kg]
 
   ! 3) Converting Wind U and V components to Windspeed and Direction:
@@ -556,7 +916,7 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   status = nf90_close(ncid)
   call check_nc(status)
   
-  deallocate(U_Vel, V_Vel, mixratio, TimeStamp)
+  deallocate(pertur_T, U_Vel, V_Vel, mixratio, TimeStamp)
   
   return
 end subroutine read_wrf
@@ -828,7 +1188,7 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NSTOKES,&
   integer :: var_te_id, var_pr_id, var_rh_id, var_qv_id, var_qc_id
   integer :: var_qr_id, var_qs_id, var_qg_id, var_qi_id, var_wd_id, var_ws_id
   integer :: var_kextqc_id, var_kextqr_id, var_kextqs_id
-  integer :: var_kextqg_id, var_kextqi_id, var_kextatm_id, var_kexttot_id
+  integer :: var_kextqg_id, var_kextqi_id, var_kextatm_id
   integer :: var_salbtot_id, var_backsct_id, var_gcoeff_id, var_qidx_id
   integer, dimension(NSTOKES) :: stokes_var
   !real(kind=4), dimension(NTIME) :: TIMELINE
@@ -880,7 +1240,6 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NSTOKES,&
   status = nf90_def_var(ncid, "wd", NF90_REAL4, (/xn_id, yn_id, lyr_id, time_id/), var_wd_id)
   status = nf90_def_var(ncid, "ws", NF90_REAL4, (/xn_id, yn_id, lyr_id, time_id/), var_ws_id)
   ! Definition of Micro-physics frequency dependent variables (Profiles)
-  status = nf90_def_var(ncid, "kext_tot", NF90_REAL4, (/xn_id, yn_id, lyr_id, freq_id, time_id/), var_kexttot_id)
   status = nf90_def_var(ncid, "kext_atm", NF90_REAL4, (/xn_id, yn_id, lyr_id, freq_id, time_id/), var_kextatm_id)
   status = nf90_def_var(ncid, "kext_qc", NF90_REAL4, (/xn_id, yn_id, lyr_id, freq_id, time_id/), var_kextqc_id)
   status = nf90_def_var(ncid, "kext_qr", NF90_REAL4, (/xn_id, yn_id, lyr_id, freq_id, time_id/), var_kextqr_id)
@@ -1025,12 +1384,6 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NSTOKES,&
   status = nf90_put_att(ncid, var_ws_id, "long_name","wind speed")
   status = nf90_put_att(ncid, var_ws_id, "units","knot")
   status = nf90_put_att(ncid, var_ws_id, "_FillValue",-999.9)
-
-
-  status = nf90_put_att(ncid, var_kexttot_id, "short_name","kext_tot")
-  status = nf90_put_att(ncid, var_kexttot_id, "long_name","total extinction coefficient")
-  status = nf90_put_att(ncid, var_kexttot_id, "units","km-1")
-  status = nf90_put_att(ncid, var_kexttot_id, "_FillValue",-999.9)
   
   status = nf90_put_att(ncid, var_kextatm_id, "short_name","kext_atm")
   status = nf90_put_att(ncid, var_kextatm_id, "long_name","atmospheric extinction coefficient")
@@ -1143,6 +1496,7 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   use netcdf
   use variables, only : nx_in, nx_fin, ny_in, ny_fin, timeidx, nx, ny, UnixTime
   use nctoys
+  use meteo_tools, only : interp1_1D
   
   character(len=*), intent(in) :: OUT_FILE
   real(kind=8), intent(in) :: MU_VALUES(NUMMU), HEIGHT(NOUTLEVELS), OUTVAR(NUMMU,NSTOKES,2,NOUTLEVELS)
@@ -1176,7 +1530,6 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   if(idx.eq.1) stop 'no x000_ found in string passed'
 
   read(OUT_FILE(idx:),'(I03XI03)') x_grid, y_grid
-  
   if(x_grid.NE.nx.OR.y_grid.NE.ny) stop 'ERROR passing x_grid or y_grid in storecdf'
   !x_grid = nx - nx_in + 1
   !y_grid = ny - ny_in + 1
@@ -1332,7 +1685,10 @@ end subroutine storencdf
 
 subroutine MP_storencdf(OUT_FILE, time_len, i_freq)
   use netcdf
-  use variables, only : nx, ny, nlyr, kextcloud, KEXTATMO, &
+  use nctoys, only : check_nc
+  use variables, only : ngridx, ngridy, nx, ny, nlyr, kextcloud, KEXTATMO, &
+       temp_lev, press_lev, relhum_lev, hgt_lev, mixr_tmp, &
+       winddir_tmp, windvel_tmp, &
        kextrain, kextice, kextsnow, kextgraupel, &
        cloud_water, rain_water, cloud_ice, snow, graupel, &
        salbtot, back, g_coeff
@@ -1341,11 +1697,6 @@ subroutine MP_storencdf(OUT_FILE, time_len, i_freq)
 
   character(len=*), intent(in) :: OUT_FILE
   integer, intent(in) :: time_len, i_freq
-  real(kind=8) :: TEMP(0:NLYR), PRESS(0:NLYR), RH(0:NLYR)  ! 0: because surface values
-  real(kind=8) :: LAYERS(NLYR), QV(NLYR), QC(NLYR), WD(NLYR), WS(NLYR)
-  real(kind=8) :: KEXTTOT(NLYR), KEXTATM(NLYR), KEXTQC(NLYR)
-  real(kind=8) :: ALBEDO(NLYR), BACKSCATT(NLYR), GCOEFF(NLYR)
-
   ! internal variables
   integer :: status, ncid, VarId
   integer :: nDims, unlimdimid, freq_id
@@ -1355,9 +1706,6 @@ subroutine MP_storencdf(OUT_FILE, time_len, i_freq)
   integer :: freq_len
 
 
-  ! Assigning temporal variables:
-  TEMP = temp_lev(nx, ny, :)
-  
   ncfile = OUT_FILE
   status = NF90_OPEN(ncfile, MODE=NF90_WRITE, NCID=ncid)
   if(status/=NF90_NOERR) stop 'Opening the NetCDF to add'
@@ -1376,151 +1724,140 @@ subroutine MP_storencdf(OUT_FILE, time_len, i_freq)
   ! Writting the 2m Temperature
   status = nf90_inq_varid(ncid, "T2m", VarId)
   if(status /= nf90_NoErr) stop 'T2m variable ID cannot be read!'
-  status = nf90_put_var(ncid,VarId, TEMP(0:0), start=(/nx , ny, time_len/), count=(/1,1,1/))
-  if(status /= nf90_NoErr) stop 'T2m variable cannot be written!'
+  status = nf90_put_var(ncid, VarId, temp_lev(:,:,0:0), start=(/1 , 1, time_len/), count=(/ngridx, ngridy, 1/))
+  call check_nc(status, 'T2m variable cannot be written!', .true.)
 
   ! Writting the 2m RH
   status = nf90_inq_varid(ncid, "RH2m", VarId)
   if(status /= nf90_NoErr) stop 'RH2m variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, RH(0:0),  start=(/nx, ny, time_len/), count=(/1,1,1/))
+  status = nf90_put_var(ncid, VarId, relhum_lev(:,:,0:0), start=(/1, 1, time_len/), count=(/ngridx, ngridy, 1/))
+  call check_nc(status, 'RH2m variable cannot be written!', .true.)
   
   ! Writting the 2m Air Pressure
   status = nf90_inq_varid(ncid, "P2m", VarId)
   if(status /= nf90_NoErr) stop 'Air pressure variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, PRESS(0:0),  start=(/nx, ny, time_len/), count=(/1,1,1/))
+  status = nf90_put_var(ncid, VarId, press_lev(:,:,0:0), start=(/1, 1, time_len/) )
+  call check_nc(status, 'P2m variable cannot be written!', .true.)
   
   ! ********** Writting Profile Variables ****************************
   ! Writting the Temperature
   status = nf90_inq_varid(ncid, "temp", VarId)
   if(status /= nf90_NoErr) stop 'Temperature profile ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, TEMP, start=(/nx, ny, 1, time_len/),count=(/1,1,NLYR,1/))
+  status = nf90_put_var(ncid, VarId, temp_lev(:,:,1:nlyr), start=(/1, 1, 1, time_len/) )
   if(status /= nf90_NoErr) stop 'Temperature profile cannot be written!'
-
+  
   ! Writting the Pressure
   status = nf90_inq_varid(ncid, "press", VarId)
   if(status /= nf90_NoErr) stop 'Pressure profile ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, PRESS, start=(/nx, ny, 1, time_len/),count=(/1,1,NLYR,1/))
+  status = nf90_put_var(ncid, VarId, press_lev(:,:,1:nlyr), start=(/1, 1, 1, time_len/) )
   if(status /= nf90_NoErr) stop 'Pressure profile cannot be written!'
 
   ! Writting the Relative Humidity
   status = nf90_inq_varid(ncid, "rh", VarId)
   if(status /= nf90_NoErr) stop 'RH profile ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, RH, start=(/nx, ny ,1, time_len/),count=(/1,1,NLYR,1/))
+  status = nf90_put_var(ncid, VarId, relhum_lev(:,:,1:nlyr), start=(/1, 1 ,1, time_len/) )
   if(status /= nf90_NoErr) stop 'RH profile cannot be written!'
 
   ! Writting the QV variable
   status = nf90_inq_varid(ncid, "qv", VarId)
   if(status /= nf90_NoErr) stop 'QV variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, QV, start=(/nx, ny, 1, time_len/),count=(/1,1,NLYR,1/))
+  status = nf90_put_var(ncid, VarId, mixr_tmp(:,:,:,time_len), &
+       start=(/1, 1, 1, time_len/) )
   if(status /= nf90_NoErr) stop 'QV cannot be written!'
   ! Writting the QC variable
   status = nf90_inq_varid(ncid, "qc", VarId)
   if(status /= nf90_NoErr) stop 'QC variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, QC, start=(/nx, ny, 1, time_len/),count=(/1,1,NLYR,1/))
+  status = nf90_put_var(ncid, VarId, cloud_water, start=(/1, 1, 1, time_len/) )
   if(status /= nf90_NoErr) stop 'QC cannot be written!'
 
   ! Writting the QR variable
   status = nf90_inq_varid(ncid, "qr", VarId)
   if(status /= nf90_NoErr) stop 'QR variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, rain_water(nx, ny, :), &
-       start=(/nx, ny, 1, time_len/),count=(/1, 1, NLYR, 1/) )
+  status = nf90_put_var(ncid, VarId, rain_water, start=(/1, 1, 1, time_len/) )
   if(status /= nf90_NoErr) stop 'QR cannot be written!'
 
   ! Writting the QI variable
   status = nf90_inq_varid(ncid, "qi", VarId)
   if(status /= nf90_NoErr) stop 'QI variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, cloud_ice(nx, ny, :), &
-       &start=(/nx, ny, 1, time_len/),count=(/1, 1, NLYR, 1/) )
+  status = nf90_put_var(ncid, VarId, cloud_ice, start=(/1, 1, 1, time_len/) )
   if(status /= nf90_NoErr) stop 'QI cannot be written!'
 
   ! Writting the QS variable
   status = nf90_inq_varid(ncid, "qs", VarId)
   if(status /= nf90_NoErr) stop 'QS variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, snow(nx, ny, :), &
-       &start=(/nx, ny, 1, time_len/),count=(/1, 1, NLYR, 1/) )
+  status = nf90_put_var(ncid, VarId, snow, start=(/1, 1, 1, time_len/) )
   if(status /= nf90_NoErr) stop 'QS cannot be written!'
 
   ! Writting the QG variable
   status = nf90_inq_varid(ncid, "qg", VarId)
   if(status /= nf90_NoErr) stop 'QG variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, graupel(nx, ny, :), &
-       &start=(/nx, ny, 1, time_len/),count=(/1, 1, NLYR, 1/))
+  status = nf90_put_var(ncid, VarId, graupel, start=(/1, 1, 1, time_len/) )
   if(status /= nf90_NoErr) stop 'QG cannot be written!'
 
   ! Writting the Wind Direction variable
   status = nf90_inq_varid(ncid, "wd", VarId)
   if(status /= nf90_NoErr) stop 'WD variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, WD, start=(/nx, ny, 1, time_len/),count=(/1,1,NLYR,1/))
+  status = nf90_put_var(ncid, VarId, winddir_tmp(:,:,:, time_len), start=(/1, 1, 1, time_len/) )
   if(status /= nf90_NoErr) stop 'WD cannot be written!'
   ! Writting the Wind Speed variable
   status = nf90_inq_varid(ncid, "ws", VarId)
   if(status /= nf90_NoErr) stop 'WS variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, WS, start=(/nx, ny, 1, time_len/),count=(/1,1,NLYR,1/))
+  status = nf90_put_var(ncid, VarId, windvel_tmp(:,:,:, time_len), start=(/1, 1, 1, time_len/) )
   if(status /= nf90_NoErr) stop 'WS cannot be written!'
 
   ! ---------------------------------------
   ! Writting the ATMOSPHERIC Extintion coeff
   status = nf90_inq_varid(ncid, "kext_atm", VarId)
   if(status /= nf90_NoErr) stop 'KEXT_ATMOS variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, KEXTATM, start=(/nx, ny, 1, i_freq, time_len/),count=(/1,1,NLYR,1,1/))
+  status = nf90_put_var(ncid, VarId, KEXTATMO, start=(/1, 1, 1, i_freq, time_len/) )
   if(status /= nf90_NoErr) stop 'KEXT_ATMOS cannot be written!'
   
-  ! Writting the Total Extintion coeff
-  status = nf90_inq_varid(ncid, "kext_tot", VarId)
-  if(status /= nf90_NoErr) stop 'KEXT_TOTAL variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, KEXTTOT, start=(/nx, ny, 1, i_freq, time_len/),count=(/1,1,NLYR,1,1/))
-  if(status /= nf90_NoErr) stop 'KEXT_TOT cannot be written!'
-
   ! Writting the Cloud Extintion coeff
   status = nf90_inq_varid(ncid, "kext_qc", VarId)
   if(status /= nf90_NoErr) stop 'KEXT_CLOUD variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, KEXTQC, start=(/nx, ny, 1, i_freq, time_len/),count=(/1,1,NLYR,1,1/))
+  status = nf90_put_var(ncid, VarId, kextcloud, start=(/1, 1, 1, i_freq, time_len/) )
   if(status /= nf90_NoErr) stop 'KEXT_CLOUD cannot be written!'
 
   ! Writting the Rain Extintion coeff
   status = nf90_inq_varid(ncid, "kext_qr", VarId)
   if(status /= nf90_NoErr) stop 'KEXT_RAIN variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, kextrain(nx, ny, :), &
-       &start=(/nx, ny, 1, i_freq, time_len/), count=(/1,1,NLYR,1,1/) )
+  status = nf90_put_var(ncid, VarId, kextrain, start=(/1, 1, 1, i_freq, time_len/) )
   if(status /= nf90_NoErr) stop 'KEXT_RAIN cannot be written!'
 
   ! Writting the ICE Extintion coeff
   status = nf90_inq_varid(ncid, "kext_qi", VarId)
   if(status /= nf90_NoErr) stop 'KEXT_ICE variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, kextice(nx, ny, :), &
-       &start=(/nx, ny, 1, i_freq, time_len/), count=(/1,1,NLYR,1,1/) )
+  status = nf90_put_var(ncid, VarId, kextice, start=(/1, 1, 1, i_freq, time_len/) )
   if(status /= nf90_NoErr) stop 'KEXT_ICE cannot be written!'
 
   ! Writting the SNOW Extintion coeff
   status = nf90_inq_varid(ncid, "kext_qs", VarId)
   if(status /= nf90_NoErr) stop 'KEXT_SNOW variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, kextsnow(nx, ny, :), &
-       &start=(/nx, ny, 1, i_freq, time_len/), count=(/1,1,NLYR,1,1/) )
+  status = nf90_put_var(ncid, VarId, kextsnow, start=(/1, 1, 1, i_freq, time_len/) )
   if(status /= nf90_NoErr) stop 'KEXT_SNOW cannot be written!'
 
   ! Writting the GRAUPEL Extintion coeff
   status = nf90_inq_varid(ncid, "kext_qg", VarId)
   if(status /= nf90_NoErr) stop 'KEXT_GRAUPEL variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, kextgraupel(nx, ny, :), &
-       &start=(/nx, ny, 1, i_freq, time_len/), count=(/1,1,NLYR,1,1/) )
+  status = nf90_put_var(ncid, VarId, kextgraupel, start=(/1, 1, 1, i_freq, time_len/) )
   if(status /= nf90_NoErr) stop 'KEXT_GRAUPEL cannot be written!'
 
   ! Writting the Total Albedo coeff
   status = nf90_inq_varid(ncid, "alb_tot", VarId)
   if(status /= nf90_NoErr) stop 'TOTAL Albedo variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, ALBEDO, start=(/nx, ny, 1, i_freq, time_len/),count=(/1,1,NLYR,1,1/))
+  status = nf90_put_var(ncid, VarId, salbtot, start=(/1, 1, 1, i_freq, time_len/) )
   if(status /= nf90_NoErr) stop 'TOTAL  ALBEDO cannot be written!'
 
   ! Writting the Backscattering coeff
   status = nf90_inq_varid(ncid, "back_scatt", VarId)
   if(status /= nf90_NoErr) stop 'Backscattering variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, BACKSCATT, start=(/nx, ny, 1, i_freq, time_len/),count=(/1,1,NLYR,1,1/))
+  status = nf90_put_var(ncid, VarId, back, start=(/1, 1, 1, i_freq, time_len/) )
   if(status /= nf90_NoErr) stop 'Backscattering cannot be written!'
 
   ! Writting the asymetry factor
   status = nf90_inq_varid(ncid, "g_coeff", VarId)
   if(status /= nf90_NoErr) stop 'G-factor variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, GCOEFF, start=(/nx, ny, 1, i_freq, time_len/),count=(/1,1,NLYR,1,1/))
+  status = nf90_put_var(ncid, VarId, g_coeff, start=(/1, 1, 1, i_freq, time_len/) )
   if(status /= nf90_NoErr) stop 'G-factor cannot be written!'
   
   status = NF90_CLOSE(ncid)
@@ -1572,277 +1909,89 @@ subroutine allocate_RT3_variables
   return
 end subroutine allocate_RT3_variables
 
-! -------------------------------------------------------------------------------------
-! Subroutine to interpolate extra observations angles
-! in case the input value is out of limits, extrapolation is attended with the two first
-! (lower extrapolation) or last (upper extrapolation) values of the vector.
-!
-subroutine interp1_1D(Xin, Yin, Nin, X0, N0, Xout, Nout, Yout, Nstk, Nflx, Nlev)
-  
-  ! Interpolated abssice values must increase monotonically, 
-  ! the ordenate values can be decreasing or increasing
-  ! Repeated values in Xin and X0 are omitted
-  
-  implicit none
-  integer, intent(in) :: Nin, N0, Nstk, Nflx, Nlev, Nout
-  real(kind=8), intent(in) :: Xin(Nin), X0(N0), Yin(Nin,Nstk,Nflx,Nlev)
-  real(kind=8), intent(out):: Xout(Nout)
-  real(kind=8), intent(out):: Yout(Nout,Nstk,Nflx,Nlev)
-  integer :: h, idx, idn, iout
-  real(kind=8) :: a, b, Fa(Nstk, Nflx, Nlev), Fb(Nstk, Nflx, Nlev), F0(Nstk, Nflx, Nlev)
-  real(kind=8) :: eps = 1.0E-4
-  
-  ! union of Xin and X0 sets
-  Yout = -69.8
-  Yout(1:Nin,:,:,:) = Yin
-  
-  Xout = -69.0
-  Xout(1:Nin) = Xin
-    
-  do h = 1, N0
-     !if(any(abs(Xout-X0(h)).LT.eps)) cycle
-     !iout = iout + 1
-     if(X0(h).GT.maxval(Xout)) then
-        idx = maxloc(Xout,1)+1
-        a = Xout(idx-2)
-        b = Xout(idx-1)
-        Fa = Yout(idx-2,:,:,:)
-        Fb = Yout(idx-1,:,:,:)
-     else if(X0(h).LT.minval(Xout)) then
-        idx = 1
-        a = Xout(idx)
-        b = Xout(idx+1)
-        Fa = Yout(idx,:,:,:)
-        Fb = Yout(idx+1,:,:,:)
-     else
-        idx = minloc(Xout,DIM=1,MASK=X0(h)<=Xout)
-        a = Xout(idx-1)
-        b = Xout(idx)
-        Fa = Yout(idx-1,:,:,:)
-        Fb = Yout(idx,:,:,:)
-     end if
-     
-     if(abs(X0(h)-b).LT.eps) then
-        F0 = Fb
-     else if(abs(X0(h)-a).LT.eps) then
-        F0 = Fa
-     else
-        F0 = Fa + (X0(h)-a)*(Fb-Fa)/(b-a)
-     end if
-     idn = Nin+h-1
-     Xout(idx+1:idn+1) = Xout(idx:idn)
-     Xout(idx) = X0(h)
 
-     Yout(idx+1:idn+1, :, :, :) = Yout(idx:idn,:,:,:)
-     Yout(idx, :, :, :)   = F0
-     
-  end do
-  
-end subroutine interp1_1D
-
-! ---------------------------------------------------------------
-! HUMIDITY CONVERSION FORMULAS
-! Calculation formulas for humidity (B210973EN-F)
-! By (c) VAISALA 2003
-! https://www.hatchability.com/Vaisala.pdf
-!
-!
-! ---
-! (c) 2019 Pablo Saavedra G.
-! Geophysical Institute, University of Bergen
-! See LICENSE
-!
-! ROUTINE TO CONVERT MIXING RATIO TO RH
-subroutine mixr2rh(nx, ny, nz, nt, MIXR, P, T, RH)
-  implicit none
-  integer, intent(in) :: nx, ny, nz, nt
-  real(kind=8), intent(in), dimension(nx,ny,nz,nt) :: MIXR, P, T
-  real(kind=8), intent(out), dimension(nx,ny,nz,nt) :: RH
-
-  integer :: i, j
-  real, dimension(nx,ny,nz,nt) :: PWS, etha, A
-  real, parameter :: COEFF = 2.16679 ! [g K J^-1]
-  real, parameter :: Tc = 647.096  ! critical temperature [K]
-  real, parameter :: Pc = 220640   ! critical pressure [hPa]
-  real, parameter :: B  = 0.6219907 ! constant for air [kg/kg]
-  real, parameter :: CC(6) = (/ -7.85951783, 1.84408259, &
-       & -11.7866497, 22.6807411, -15.9618719, 1.80122502 /)
-  real, parameter :: EE(6) = (/1.0, 1.5, 3.0, 3.5, 4.0, 7.5/)
-
-  etha = 1.0d0 - T/Tc
-  A = 0.0d0
-  do i=1, 6
-     A = A + CC(i)*(etha**EE(i))
-  end do
-  PWS = Pc*exp(A*Tc/T)
-  !RH = 1E-3*MIXR*T/PWS/COEFF
-  !RH = 100*PW/PWS
-  RH = 100*MIXR*P/(MIXR + B)/PWS
-end subroutine mixr2rh
-! ----
-
-! _________________________________________________________________
-! Specific Humidity to Relative Humidity
-subroutine qv2rh(nx, ny, nz, nt, QV, P, T, RH)
-  implicit none
-  integer, intent(in) :: nx, ny, nz, nt
-  real(kind=8), intent(in), dimension(nx,ny,nz,nt) :: QV, P, T
-  real(kind=8), intent(out), dimension(nx,ny,nz,nt) :: RH
-
-  real(kind=8) :: MIXR(nx, ny, nz, nt)
-
-  ! Converting Specific Humidity to Mixing Ratio:
-  MIXR = QV/(1.0 - QV)
-
-  call mixr2rh(nx, ny, nz, nt, MIXR, P, T, RH)
-  return
-end subroutine qv2rh
-! ----
-
-! ____________________________________________________________________
-! CONVERT perturbation potential temperature (theta-t0)
-! to Temperature.
-!
-! Based on "[Wrf-users] perturbation potential temperature"
-! https://mailman.ucar.edu/pipermail/wrf-users/2010/001896.html
-! Where thete: Potential Temperature and T0=300K
-! kappa: the Poisson constant (kappa = R/c_p), the ratio of the gas
-! constant R to the specific heat at constant pressure c_p.
-
-subroutine PERTHETA2T(nx, ny, nz, nt, Tper, P, T)
-  implicit none
-  integer, intent(in) :: nx, ny, nz, nt
-  real(kind=8), intent(in), dimension(nx,ny,nz,nt) :: Tper, P
-  real(kind=8), intent(inout), dimension(nx,ny,nz,nt) :: T
-
-  real(kind=8), dimension(nx,ny,nz,nt) :: theta
-  real, parameter :: T0 = 300 ! [K]
-  real, parameter :: P0 = 1000 ! standard pressure [hPa]
-  real, parameter :: kappa = 0.2854 !  For dry air
-
-  theta = Tper + 300  ! Potential Temperature [K]
-  T = theta*(P/P0)**kappa
-end subroutine PERTHETA2T
-! ----
-
-! __________________________________________________________________
-! Subroutine to convert Wind U and V component to wind speed, and direction
-!
-! (c) 2019, Pablo Saavedra G.
-! Geophysical Institute, University of Bonn
-! ---
-elemental subroutine Wind_UV2speeddir(U, V, WS, WD)
-  implicit none
-  real(kind=8), intent(in) :: U, V
-  real(kind=8), intent(out) :: WS, WD
-  real, parameter :: PI2deg = 45.0/atan(1.0)
-  
-  WS = sqrt( U*U + V*V)
-  WD = modulo(360.0 - atan2(U, V)*PI2deg, 360.0)
-  return
-end subroutine Wind_UV2speeddir
-!!$subroutine Wind_UV2speeddir(nx, ny, nz, nt, U, V, WS, WD)
+!!$! ROUTINE TO CONVERT MIXING RATIO TO RH
+!!$subroutine mixr2rh(nx, ny, nz, nt, MIXR, P, T, RH)
 !!$  implicit none
-!!$  integer, intent(in) :: nx, ny ,nz, nt
-!!$  real(kind=8), intent(in), dimension(nx,ny,nz,nt) :: U, V
-!!$  real(kind=8), intent(out), dimension(nx,ny,nz,nt) :: WS, WD
-!!$  real, parameter :: PI2deg = 45.0/atan(1.0)
-!!$  
-!!$  WS = sqrt( U*U + V*V)
-!!$  WD = modulo(360.0 - atan2(U, V)*PI2deg, 360.0)
+!!$  integer, intent(in) :: nx, ny, nz, nt
+!!$  real(kind=8), intent(in), dimension(nx,ny,nz,nt) :: MIXR, P, T
+!!$  real(kind=8), intent(out), dimension(nx,ny,nz,nt) :: RH
+!!$
+!!$  integer :: i, j
+!!$  real, dimension(nx,ny,nz,nt) :: PWS, etha, A
+!!$  real, parameter :: COEFF = 2.16679 ! [g K J^-1]
+!!$  real, parameter :: Tc = 647.096  ! critical temperature [K]
+!!$  real, parameter :: Pc = 220640   ! critical pressure [hPa]
+!!$  real, parameter :: B  = 0.6219907 ! constant for air [kg/kg]
+!!$  real, parameter :: CC(6) = (/ -7.85951783, 1.84408259, &
+!!$       & -11.7866497, 22.6807411, -15.9618719, 1.80122502 /)
+!!$  real, parameter :: EE(6) = (/1.0, 1.5, 3.0, 3.5, 4.0, 7.5/)
+!!$
+!!$  etha = 1.0d0 - T/Tc
+!!$  A = 0.0d0
+!!$  do i=1, 6
+!!$     A = A + CC(i)*(etha**EE(i))
+!!$  end do
+!!$  PWS = Pc*exp(A*Tc/T)
+!!$  !RH = 1E-3*MIXR*T/PWS/COEFF
+!!$  !RH = 100*PW/PWS
+!!$  RH = 100*MIXR*P/(MIXR + B)/PWS
+!!$end subroutine mixr2rh
+!!$! ----
+
+!!$! _________________________________________________________________
+!!$! Specific Humidity to Relative Humidity
+!!$subroutine qv2rh(nx, ny, nz, nt, QV, P, T, RH)
+!!$  implicit none
+!!$  integer, intent(in) :: nx, ny, nz, nt
+!!$  real(kind=8), intent(in), dimension(nx,ny,nz,nt) :: QV, P, T
+!!$  real(kind=8), intent(out), dimension(nx,ny,nz,nt) :: RH
+!!$
+!!$  real(kind=8) :: MIXR(nx, ny, nz, nt)
+!!$
+!!$  ! Converting Specific Humidity to Mixing Ratio:
+!!$  MIXR = QV/(1.0 - QV)
+!!$
+!!$  call mixr2rh(nx, ny, nz, nt, MIXR, P, T, RH)
 !!$  return
-!!$end subroutine Wind_UV2speeddir
-! ----
+!!$end subroutine qv2rh
+!!$! ----
 
-
-! _______________________________________________________________________
-! Subroutine to calculate the Geopotential Height given T, P, MIXR
-!
-! - INPUT:
-! * T(NX, NY, 0:NZ, NT)  : Temperature [K]
-! * P(NX, NY, 0:NZ, NT)  : Pressure [hPa]
-! * MIXR(NX, NY, NZ, NT) : Mixing ration [kg/kg]
-! - OUTPUT:
-! * Z(NX, NY, NZ, NT)    : Geopotential Height [km] 
-!
-! ---
-! (c) 2020, Pablo Saavedra G.
-! Geophysical Institute, University of Bergen
-! See LICENSE
-! -----------------------------------------------------------------------
-subroutine Calculate_GeopotentialZ(NX, NY, NZ, NT, T, P, MIXR, Z) 
-  implicit none
-  interface
-     elemental function T2TV(T, MIXR) result (TV)
-       implicit none
-       real(kind=8), intent(in) :: T, MIXR
-       real(kind=8) :: TV
-     end function T2TV
-  end interface
-  integer, intent(in) :: NX, NY, NZ, NT
-  real(kind=8), intent(in), dimension(NX,NY,0:NZ,NT) :: T, P
-  real(kind=8), intent(in), dimension(NX,NY,NZ,NT) :: MIXR
-  real(kind=8), intent(out), dimension(NX,NY,NZ,NT) :: Z
-
-  ! ** local variables
-  integer :: i
-  real(kind=8), allocatable, dimension(:,:,:,:) :: TV, del_P, TVdP
-  real, parameter :: Rd = 287         ! [J/kg/K] dry air gass constant
-  real, parameter :: g0 = 9.807       ! [m/s^2]  gravity constant
-
-
-  allocate(TV(NX, NY, NZ, NT) )
-  !call Calculate_VirtualTemperature(NX, NY, NZ, NT, T(:,:,1:NZ,:), MIXR, TV)
-  TV = T2TV(T(:,:,1:NZ,:), MIXR)
-  
-  del_P = P(:,:,0:NZ-1,:) - P(:,:,1:NZ,:)
-
-  ! temporal integrable variable = Tv/P *dP
-  TVdP = TV*del_P/P(:,:,1:NZ,:)
-
-  do i = 1, NZ
-     Z(:,:,i,:) = sum(TVdP(:,:,1:i,:), dim=3)
-  end do
-  Z = (1E-3*Rd/g0)*Z  ! converting to [km]
-
-  return
-end subroutine Calculate_GeopotentialZ
-! -----
-
-! _______________________________________________________________________
-! Subroutine to calculate the Virtual Temperature given T, MIXR
-!
-! - INPUT:
-! * T(NX, NY, NZ, NT)    : Temperature [K]
-! * MIXR(NX, NY, NZ, NT) : Mixing ration [kg/kg]
-! - OUTPUT:
-! * Tv(NX, NY, NZ, NT)   : Virtual Temperature [K] 
-!
-! ---
-! (c) 2020, Pablo Saavedra G.
-! Geophysical Institute, University of Bergen
-! See LICENSE
-! -----------------------------------------------------------------------
-subroutine Calculate_VirtualTemperature(NX, NY, NZ, NT, T, MIXR, TV)
-  implicit none
-  integer, intent(in) :: NX, NY, NZ, NT
-  real(kind=8), intent(in), dimension(NX, NY, NZ, NT) :: T, MIXR
-  real(kind=8), intent(out), dimension(NX, NY, NZ, NT) :: TV
-
-  ! ** local variables
-  ! Rd gas constant dry air, Rv gas constant water vapour:
-  real, parameter :: Rd = 287, Rv = 461.5  ! [J/kg/K]
-  real, parameter :: eps = Rd/Rv
-
-  TV = T*(1.d0 + MIXR/eps)/(1.d0 + MIXR)
-  return
-end subroutine Calculate_VirtualTemperature
-
-elemental function T2TV(T, MIXR) result (TV)
-  implicit none
-  real(kind=8), intent(in) :: T, MIXR
-  real(kind=8) :: TV
-
-  TV = T*(1.0 + MIXR*1.604)/(1.0 + MIXR)
-  return
-end function T2TV
+!!$subroutine Calculate_GeopotentialZ(NX, NY, NZ, NT, T, P, MIXR, Z) 
+!!$  implicit none
+!!$  interface
+!!$     elemental function T2TV(T, MIXR) result (TV)
+!!$       implicit none
+!!$       real(kind=8), intent(in) :: T, MIXR
+!!$       real(kind=8) :: TV
+!!$     end function T2TV
+!!$  end interface
+!!$  integer, intent(in) :: NX, NY, NZ, NT
+!!$  real(kind=8), intent(in), dimension(NX,NY,0:NZ,NT) :: T, P
+!!$  real(kind=8), intent(in), dimension(NX,NY,NZ,NT) :: MIXR
+!!$  real(kind=8), intent(out), dimension(NX,NY,NZ,NT) :: Z
+!!$
+!!$  ! ** local variables
+!!$  integer :: i
+!!$  real(kind=8), allocatable, dimension(:,:,:,:) :: TV, del_P, TVdP
+!!$  real, parameter :: Rd = 287         ! [J/kg/K] dry air gass constant
+!!$  real, parameter :: g0 = 9.807       ! [m/s^2]  gravity constant
+!!$
+!!$
+!!$  allocate(TV(NX, NY, NZ, NT) )
+!!$  !call Calculate_VirtualTemperature(NX, NY, NZ, NT, T(:,:,1:NZ,:), MIXR, TV)
+!!$  TV = T2TV(T(:,:,1:NZ,:), MIXR)
+!!$  
+!!$  del_P = P(:,:,0:NZ-1,:) - P(:,:,1:NZ,:)
+!!$
+!!$  ! temporal integrable variable = Tv/P *dP
+!!$  TVdP = TV*del_P/P(:,:,1:NZ,:)
+!!$
+!!$  do i = 1, NZ
+!!$     Z(:,:,i,:) = sum(TVdP(:,:,1:i,:), dim=3)
+!!$  end do
+!!$  Z = (1E-3*Rd/g0)*Z  ! converting to [km]
+!!$
+!!$  return
+!!$end subroutine Calculate_GeopotentialZ
+!!$! -----

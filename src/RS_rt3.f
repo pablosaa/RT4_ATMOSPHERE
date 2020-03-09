@@ -65,7 +65,7 @@ C                    **  RADTRAN I/O SPECIFICATIONS  **
       use variables
       
       implicit none
-      include "omp_lib.h"    ! PSG: including OpenMP library
+      include "omp_lib.h"  ! PSG: including OpenMP library
       include    'parameters.inc'
       integer i,j,k,isamp,jj,jsamp,nf,nz, ! PSG: nx, ny out to the module
      $n_verify_input,nlev, !,ngridx,ngridy,nlyr
@@ -407,8 +407,8 @@ C     !PSG: -- end of NetCDF reading routine
 c     write(*,29) frq_str  
            
            call omp_set_num_threads(4)
-!$OMP PARALLEL NUM_THREADS(1) PRIVAD(AUIOF,BUIOF)
-!$OMP DO
+C     C!$OMP PARALLEL NUM_THREADS(1) PRIVAD(AUIOF,BUIOF)
+C     !$OMP PARALLEL DO
 C     !PSG: Passing temporal variables to old variables (no time)
            DO 656, timeidx = 1, ntime
               write(*,*) 'running on thread: ', OMP_GET_THREAD_NUM(),
@@ -1068,11 +1068,7 @@ C     write(*,*) 'entra a '//FILE_profile//' com outlevels=',OUTLEVELS   ! PSG: 
 
  646  enddo                     ! end over nx_grid and ny_grid 
 
-      call MP_storencdf(NCDFOUT, timeidx, ifreq,
-     $     rho_vap,
-     $     cloud_water,
-     $     kextcloud, KEXTATMO, kexttot,
-     $     salbtot, back, g_coeff )
+      call MP_storencdf(NCDFOUT, timeidx, ifreq)
 
 c$$$      call MP_storencdf(NCDFOUT, timeidx, ifreq, ny, nx,
 c$$$     $     NLYR, hgt_lev(nx,ny,0:NLYR),
