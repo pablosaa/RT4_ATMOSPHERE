@@ -326,7 +326,7 @@ elemental function qv_to_rh(QV, P, T) result(RH)
   MIXR = qx_to_mixr(QV)
   
   RH = mixr_to_rh(MIXR, P, T)
-  !call mixr2rh(nx, ny, nz, nt, MIXR, P, T, RH)
+
   return
 end function qv_to_rh
 ! ----/
@@ -488,9 +488,9 @@ elemental function T2TV(T, MIXR) result (TV)
   ! ** local variables
   ! Rd gas constant dry air, Rv gas constant water vapour:
   real, parameter :: Rd = 287, Rv = 461.5  ! [J/kg/K]
-  real, parameter :: eps = Rv/Rd
+  real, parameter :: eps = Rd/Rv           ! ~ 0.622
 
-  TV = T*(1.0 + MIXR*eps)/(1.0 + MIXR)
+  TV = T*(1.0 + MIXR/eps)/(1.0 + MIXR)
   return
 end function T2TV
 ! ----/
@@ -499,7 +499,7 @@ end function T2TV
 ! Function to convert kg/kg to kg/m^3
 ! -> Qx  : Specific quantity e.g. humidity [kg/kg]
 ! -> T   : Temperature [K]
-! -> P   : Pressure [Pa]
+! -> P   : Pressure [hPa]
 ! <- RHOx: Specific quantity [kg/m^3]
 ! ---
 elemental function MassRatio2MassVolume(Q_x, T, P ) result(RHO_x)
@@ -511,7 +511,7 @@ elemental function MassRatio2MassVolume(Q_x, T, P ) result(RHO_x)
   real, parameter :: Rd = 287, Rv = 461.5  ! [J/kg/K]
   
   Tv = T2TV(T, Q_x)
-  RHO_x = P/Tv/Rd
+  RHO_x = (1.0E2*P)/Tv/Rd
   
   return
 end function MassRatio2MassVolume
@@ -694,28 +694,43 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
   ! --
   ! 2) Converting vapour mixing ratio to Relative Humidity
   print *, '2. converting Qv to RH'
-!!$  call qv2rh(ngridx, ngridy, 1+nlyr, ntime,&
-!!$       & QV, press_tmp, temp_tmp, relhum_tmp)
   relhum_tmp = qv_to_rh(QV, press_tmp, temp_tmp)
   
   ! --
   ! 3) Converting specific humidity units. XXto vapour mixing ratio
   print *, '3. converting units for  Qv'
   mixr_tmp = MassRatio2MassVolume(QV(:,:,1:nlyr,:), &
-       temp_tmp(:,:,1:nlyr,:), press_tmp(:,:,1:nlyr,:) )  ! [g/m^3]
-!!$  mixr_tmp = QV(:,:,1:nlyr,:)/(1.d0 - QV(:,:,1:nlyr,:))  ! [kg/kg]
+       temp_tmp(:,:,1:nlyr,:), press_tmp(:,:,1:nlyr,:) )  ! [kg/m^3]
+  mixr_tmp = 1.0E3*mixr_tmp   ! [g/kg]
+  
   ! --
   ! 4) Calculating Geopotential Altitude:
   hgt_tmp(:,:,1:nlyr,:) = Calculate_GeopotentialZ( &
        temp_tmp(:,:,1:nlyr,:), press_tmp, QV(:, :, 1:nlyr,:) )
-!!$  call Calculate_GeopotentialZ(ngridx, ngridy, nlyr, ntime,&
-!!$       &temp_tmp, press_tmp, mixr_tmp, hgt_tmp(:,:,1:nlyr,:) )
 
-  mixr_tmp = 1.0E3*mixr_tmp   ! [g/kg]
   ! --
   ! 5) Converting Wind U and V components to Windspeed and Direction:
   print *, '5. converting U V to speed dir'
   call Wind_UV2speeddir(U_Vel, V_Vel, windvel_tmp, winddir_tmp)
+
+  ! --
+  ! 6) Converting mass-ratio [kg/kg] to mass-specific [g/m^3] values:
+  cloud_water_tmp = 1.0E3*MassRatio2MassVolume(cloud_water_tmp, &
+       temp_tmp(:,:,1:nlyr,:), press_tmp(:,:,1:nlyr,:) )  ! [g/m3]
+
+  rain_water_tmp = 1.0E3*MassRatio2MassVolume(rain_water_tmp, &
+       temp_tmp(:,:,1:nlyr,:), press_tmp(:,:,1:nlyr,:) )  ! [g/m3]
+
+  cloud_ice_tmp = 1.0E3*MassRatio2MassVolume(cloud_ice_tmp, &
+       temp_tmp(:,:,1:nlyr,:), press_tmp(:,:,1:nlyr,:) )  ! [g/m3]
+
+  snow_tmp = 1.0E3*MassRatio2MassVolume(snow_tmp, &
+       temp_tmp(:,:,1:nlyr,:), press_tmp(:,:,1:nlyr,:) )  ! [g/m3]
+
+  graupel_tmp = 1.0E3*MassRatio2MassVolume(graupel_tmp, &
+       temp_tmp(:,:,1:nlyr,:), press_tmp(:,:,1:nlyr,:) )  ! [g/m3]
+
+  
   ! --
   qidx = 15
   del_xy = 2.5  ! [km]
@@ -894,8 +909,7 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   
   ! 2) Converting Vapor mixing ratio to Relative Humidity
   relhum_tmp = mixr_to_rh(mixratio, press_tmp, temp_tmp)
-  !call mixr2rh(ngridx, ngridy, 1+nlyr, ntime,&
-  !     & mixratio, press_tmp, temp_tmp, relhum_tmp)
+
   mixr_tmp = 1E3*mixratio(:, :, 1:nlyr, :)   ! [g/kg]
 
   ! 3) Converting Wind U and V components to Windspeed and Direction:
@@ -903,7 +917,24 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
 
   ! 4) Converting TimeStamp to Vector Date variable:
   UnixTime = getUnixTime(TimeStamp)
+
+  ! --
+  ! 5) Converting mass-ratio [kg/kg] to mass-specific [g/m^3] values:
+  cloud_water_tmp = 1.0E3*MassRatio2MassVolume(cloud_water_tmp, &
+       temp_tmp(:,:,1:nlyr,:), press_tmp(:,:,1:nlyr,:) )  ! [g/m3]
   
+  rain_water_tmp = 1.0E3*MassRatio2MassVolume(rain_water_tmp, &
+       temp_tmp(:,:,1:nlyr,:), press_tmp(:,:,1:nlyr,:) )  ! [g/m3]
+  
+  cloud_ice_tmp = 1.0E3*MassRatio2MassVolume(cloud_ice_tmp, &
+       temp_tmp(:,:,1:nlyr,:), press_tmp(:,:,1:nlyr,:) )  ! [g/m3]
+  
+  snow_tmp = 1.0E3*MassRatio2MassVolume(snow_tmp, &
+       temp_tmp(:,:,1:nlyr,:), press_tmp(:,:,1:nlyr,:) )  ! [g/m3]
+  
+  graupel_tmp = 1.0E3*MassRatio2MassVolume(graupel_tmp, &
+       temp_tmp(:,:,1:nlyr,:), press_tmp(:,:,1:nlyr,:) )  ! [g/m3]
+
   ! ****************************
   ! Retrieving Global Attribute:
   status = nf90_get_att(ncid,NF90_GLOBAL, 'DX', del_xy(1))

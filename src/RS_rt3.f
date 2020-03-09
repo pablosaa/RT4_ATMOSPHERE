@@ -395,6 +395,10 @@ c$$$     $       lat, lon, trim(origin_str) )
         allocate(relhum_lev(ngridx,ngridy,0:nlyr))
 
 C     !PSG: -- end of NetCDF reading routine
+        call omp_set_num_threads(4)
+C     C!$OMP PARALLEL NUM_THREADS(1) PRIVAD(AUIOF,BUIOF)
+ !$OMP PARALLEL DO
+
         do 777 ifreq=1, n_freq  ! PSG: include Frequency loop
            if (freq(ifreq).gt.100.d0) then
               write(frq_str,'(f6.2)') FREQ(ifreq)
@@ -406,9 +410,6 @@ C     !PSG: -- end of NetCDF reading routine
 
 c     write(*,29) frq_str  
            
-           call omp_set_num_threads(4)
-C     C!$OMP PARALLEL NUM_THREADS(1) PRIVAD(AUIOF,BUIOF)
-C     !$OMP PARALLEL DO
 C     !PSG: Passing temporal variables to old variables (no time)
            DO 656, timeidx = 1, ntime
               write(*,*) 'running on thread: ', OMP_GET_THREAD_NUM(),
@@ -593,6 +594,7 @@ c     if (max_rainwater(nx,ny).le.1e-1) goto 646
           enddo
           GROUND_TEMP= LYR_TEMP(0)
           IF (GAS_EXTINCTION) THEN
+             ! PSG: LYR_PRESS [kPa], REL_HUM [%], VAPORPRESSURE[hPa]
              CALL GET_ATMOSG(LYR_TEMP,LYR_PRES, REL_HUM, 
      $            MXLYR, NLYR, AVGPRESSURE, VAPORPRESSURE,
      $            FREQ(ifreq),KEXTATMO(nx,ny,:) )
@@ -662,7 +664,8 @@ c     computing mean T of the layer
              Tavg = 0.5*(temp_lev(nx,ny,nz-1)+temp_lev(nx,ny,nz))
 
 CCCCCCCCCCCCCC    SINGLE SCATTERING PROPERTIES OF CLOUD WATER  CCCCCCCCCCCCCCCCCCCCCCCC
-c        write(*,*)'entro clw',freq(nf),Tavg,cloud_water(nx,ny,nz)
+c     write(*,*)'entro clw',freq(nf),Tavg,cloud_water(nx,ny,nz)
+!     PSG: Units cloud_water [gr/m³], denliq [gr/cm³], AD [1E-6 mm^-4], kextcw [km^-1] 
             if(cloud_water(nx,ny,nz).ge.1e-5) then  
 
                call REFWAT(1,LAM,Tavg,Refre,refim,ABSIND,ABSCOF) 
@@ -700,7 +703,9 @@ c     $                   kextrr, salbrr, asymrr)
 c     write(18,*)'esco rainm', kextrr, salbrr, asymrr
 c     call refr_indx_liq(FREQ, Tavg, 1.0d0, refre, refim ) 
 c     write(18,*)'ref',Refre,refim 
-          
+!     PSG: Units: rain_water [gr/m^3], N_0rainD [x10^-6 mm^-4], denliq [gr/cm^3]
+!     PSG: e.g. for Marshall-Palmer N_0 = 8.0x10^3 [mm^-1 m^-3] converting to mm^-4 the
+!     PSG: input for N_0rainD must be 8.0, thus N_0 = 8.0x10^-6 [mm^-4]
                call REFWAT(1,LAM,Tavg,Refre,refim,ABSIND,ABSCOF)
 c     write(18,*)'ref',Refre,refim
                mindex=refre-Im*refim
@@ -1081,9 +1086,9 @@ c$$$     $     kextcloud(nx,ny,:), KEXTATMO, kexttot(nx,ny,:),
 c$$$     $     salbtot(nx,ny,:), back(nx,ny,:), g_coeff(nx,ny,:) )
     
  656  continue                  ! end over time index
-!     $OMP END DO
-!     $OMP END PARALLEL      
+
  777  enddo                     ! end over frequency index
+ !$OMP END DO
 
       deallocate(temp_tmp, press_tmp, relhum_tmp, mixr_tmp)
       deallocate(cloud_water_tmp, rain_water_tmp, cloud_ice_tmp)
