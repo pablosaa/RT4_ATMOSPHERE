@@ -688,6 +688,7 @@ c     write(18,*)'ref',Refre,refim
      .              kextcw, salbcw,backcw, NLEGENcw, LEGENcw,
      $              LEGEN2cw,LEGEN3cw,LEGEN4cw, 'G')
                Nlegen=max(Nlegen,NLEGENcw)
+               !print*,'cloud nlegen: ', Nlegen
 c     write(18,*)'esco cw2', kextcw, salbcw, legen(1),legen(2),
 c     $legen(3),legen(4),legen(20),mindex
             else
@@ -722,7 +723,7 @@ c     write(18,*)'ref',Refre,refim
      .              kextrr, salbrr, backrr,NLEGENrr, LEGENrr,
      $              LEGEN2rr,LEGEN3rr,LEGEN4rr, 'G')
                Nlegen=max(Nlegen,NLEGENrr)
-        
+               !print*,'rain nlegen: ', Nlegen
             else
                kextrr=0.0d0
                salbrr=0.0d0 
@@ -754,6 +755,7 @@ c     write(18,*)'ref',Refre,refim
      .              kextci, salbci, backci,NLEGENci, LEGENci, 
      $              LEGEN2ci, LEGEN3ci, LEGEN4ci, 'G')
                Nlegen=max(Nlegen,NLEGENci)
+               !print*,'ice nlegen: ', Nlegen
 c     write(18,*)'esco ci2',kextci,salbci,legen(1),legen(2),
 c     $legen(3),legen(4),legen(20),Nlegen,mindex
             else
@@ -810,6 +812,7 @@ c     write(18,*)'new values snow', kextsn, salbsn, backsn
                   stop 
                ENDIF
                Nlegen=max(Nlegen,NLEGENsn)
+               !print*,'snow nlegen: ', Nlegen
                call LEGEndre2PHASEFUNCTION(LEGENsn,NLEGENsn,
      $              2,200,P11,ANG) 
                backsn=kextsn*salbsn*P11(2)     
@@ -862,6 +865,7 @@ c     write(18,*)'new values', kextgr, salbgr, backgr
 c     stop 
                ENDIF
                Nlegen=max(Nlegen,NLEGENgr)
+               !print*,'graupel nlegen: ', Nlegen
                call LEGEndre2PHASEFUNCTION(LEGENgr,NLEGENgr,
      $              2,200,P11,ANG) 
                backgr=kextgr*salbgr*P11(2)     
@@ -988,7 +992,7 @@ c     $ NLEGENcw,NLEGENci,NLEGENrr,NLEGENsn,NLEGENgr
             endif 
             
  1009    end do                 !end of cycle over the vertical layers
-         
+
 C     Preparation of the PROFILE file  (needed by RT3)
          AUIOF = 21 + OMP_GET_THREAD_NUM() ! PSG: include Thread-dependent file unit
          OPEN(AUIOF,FILE=file_profile,FORM='FORMATTED',STATUS='unknown') ! PSG: 21 -> AUIOF

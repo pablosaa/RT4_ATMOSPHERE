@@ -383,18 +383,7 @@ elemental subroutine Wind_UV2speeddir(U, V, WS, WD)
   WD = modulo(360.0 - atan2(U, V)*PI2deg, 360.0)
   return
 end subroutine Wind_UV2speeddir
-!!$subroutine Wind_UV2speeddir(nx, ny, nz, nt, U, V, WS, WD)
-!!$  implicit none
-!!$  integer, intent(in) :: nx, ny ,nz, nt
-!!$  real(kind=8), intent(in), dimension(nx,ny,nz,nt) :: U, V
-!!$  real(kind=8), intent(out), dimension(nx,ny,nz,nt) :: WS, WD
-!!$  real, parameter :: PI2deg = 45.0/atan(1.0)
-!!$  
-!!$  WS = sqrt( U*U + V*V)
-!!$  WD = modulo(360.0 - atan2(U, V)*PI2deg, 360.0)
-!!$  return
-!!$end subroutine Wind_UV2speeddir
-! ----
+! ----/
 
 
 ! _______________________________________________________________________
@@ -423,11 +412,8 @@ function Calculate_GeopotentialZ(T, P, Qv) result(Z)
   real, parameter :: Rd = 287         ! [J/kg/K] dry air gass constant
   real, parameter :: g0 = 9.807       ! [m/s^2]  gravity constant
 
-
-  !allocate(TV(NX, NY, NZ, NT) )
-  !call Calculate_VirtualTemperature(NX, NY, NZ, NT, T(:,:,1:NZ,:), MIXR, TV)
   MIXR = qx_to_mixr(Qv)   ! [kg/kg]
-  TV = T2TV(T, MIXR)
+  TV = VirtualTemperature(T, MIXR)
 
   NZ = size(T, 3)
   if(size(P,3).NE.NZ+1) stop 'Layer dimension for P needs to be 1 nore than Z'
@@ -450,27 +436,6 @@ end function Calculate_GeopotentialZ
 ! _______________________________________________________________________
 ! Subroutine to calculate the Virtual Temperature given T, MIXR
 !
-! - INPUT:
-! * T(NX, NY, NZ, NT)    : Temperature [K]
-! * MIXR(NX, NY, NZ, NT) : Mixing ration [kg/kg]
-! - OUTPUT:
-! * Tv(NX, NY, NZ, NT)   : Virtual Temperature [K] 
-!
-!!$subroutine Calculate_VirtualTemperature(NX, NY, NZ, NT, T, MIXR, TV)
-!!$  implicit none
-!!$  integer, intent(in) :: NX, NY, NZ, NT
-!!$  real(kind=8), intent(in), dimension(NX, NY, NZ, NT) :: T, MIXR
-!!$  real(kind=8), intent(out), dimension(NX, NY, NZ, NT) :: TV
-!!$
-!!$  ! ** local variables
-!!$  ! Rd gas constant dry air, Rv gas constant water vapour:
-!!$  real, parameter :: Rd = 287, Rv = 461.5  ! [J/kg/K]
-!!$  real, parameter :: eps = Rd/Rv
-!!$
-!!$  TV = T*(1.d0 + MIXR/eps)/(1.d0 + MIXR)
-!!$  return
-!!$end subroutine Calculate_VirtualTemperature
-
 ! --------------------------------------------------------------------
 ! Function convert Temperature to Virtual Temp.
 ! -> T    : Temperature [K]
@@ -481,7 +446,7 @@ end function Calculate_GeopotentialZ
 ! Geophysical Institute, University of Bergen
 ! See LICENSE
 ! ---
-elemental function T2TV(T, MIXR) result (TV)
+elemental function VirtualTemperature(T, MIXR) result (TV)
   implicit none
   real(kind=8), intent(in) :: T, MIXR
   real(kind=8) :: TV
@@ -492,7 +457,7 @@ elemental function T2TV(T, MIXR) result (TV)
 
   TV = T*(1.0 + MIXR/eps)/(1.0 + MIXR)
   return
-end function T2TV
+end function VirtualTemperature
 ! ----/
 
 ! --------------------------------------------------------------------
@@ -510,7 +475,7 @@ elemental function MassRatio2MassVolume(Q_x, T, P ) result(RHO_x)
   real(kind=8) :: Tv
   real, parameter :: Rd = 287, Rv = 461.5  ! [J/kg/K]
   
-  Tv = T2TV(T, Q_x)
+  Tv = VirtualTemperature(T, Q_x)
   RHO_x = (1.0E2*P)/Tv/Rd
   
   return
@@ -1991,11 +1956,11 @@ end subroutine allocate_RT3_variables
 !!$subroutine Calculate_GeopotentialZ(NX, NY, NZ, NT, T, P, MIXR, Z) 
 !!$  implicit none
 !!$  interface
-!!$     elemental function T2TV(T, MIXR) result (TV)
+!!$     elemental function VirtualTemperature(T, MIXR) result (TV)
 !!$       implicit none
 !!$       real(kind=8), intent(in) :: T, MIXR
 !!$       real(kind=8) :: TV
-!!$     end function T2TV
+!!$     end function VirtualTemperature
 !!$  end interface
 !!$  integer, intent(in) :: NX, NY, NZ, NT
 !!$  real(kind=8), intent(in), dimension(NX,NY,0:NZ,NT) :: T, P
@@ -2011,7 +1976,7 @@ end subroutine allocate_RT3_variables
 !!$
 !!$  allocate(TV(NX, NY, NZ, NT) )
 !!$  !call Calculate_VirtualTemperature(NX, NY, NZ, NT, T(:,:,1:NZ,:), MIXR, TV)
-!!$  TV = T2TV(T(:,:,1:NZ,:), MIXR)
+!!$  TV = VirtualTemperature(T(:,:,1:NZ,:), MIXR)
 !!$  
 !!$  del_P = P(:,:,0:NZ-1,:) - P(:,:,1:NZ,:)
 !!$
