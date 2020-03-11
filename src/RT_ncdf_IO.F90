@@ -387,7 +387,7 @@ end subroutine Wind_UV2speeddir
 
 
 ! _______________________________________________________________________
-! Subroutine to calculate the Geopotential Height given T, P, MIXR
+! Subroutine to calculate the Geopotential Height given T, P, Qv
 !
 ! - INPUT:
 ! * T(NX, NY, NZ, NT)    : Temperature [K]
@@ -465,18 +465,20 @@ end function VirtualTemperature
 ! -> Qx  : Specific quantity e.g. humidity [kg/kg]
 ! -> T   : Temperature [K]
 ! -> P   : Pressure [hPa]
+! -> MIXR: vapour mixing ration [kg/kg]
 ! <- RHOx: Specific quantity [kg/m^3]
 ! ---
-elemental function MassRatio2MassVolume(Q_x, T, P ) result(RHO_x)
+elemental function MassRatio2MassVolume(Q_x, T, P ,MIXR) result(RHO_x)
   implicit none
-  real(kind=8), intent(in) :: Q_x, T, P
+  real(kind=8), intent(in) :: Q_x, T, P, MIXR
   real(kind=8) :: RHO_x
   ! Local variables:
-  real(kind=8) :: Tv
+  real(kind=8) :: Tv, RHO_air
   real, parameter :: Rd = 287, Rv = 461.5  ! [J/kg/K]
   
-  Tv = VirtualTemperature(T, Q_x)
-  RHO_x = (1.0E2*P)/Tv/Rd
+  Tv = VirtualTemperature(T, MIXR)
+  RHO_air = (1.0E2*P)/Tv/Rd  ! [kg/m^3]
+  RHO_x   = Q_x*RHO_air      ! [kg/m^3]
   
   return
 end function MassRatio2MassVolume
@@ -664,9 +666,7 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
   ! --
   ! 3) Converting specific humidity units. XXto vapour mixing ratio
   print *, '3. converting units for  Qv'
-  mixr_tmp = MassRatio2MassVolume(QV(:,:,1:nlyr,:), &
-       temp_tmp(:,:,1:nlyr,:), press_tmp(:,:,1:nlyr,:) )  ! [kg/m^3]
-  mixr_tmp = 1.0E3*mixr_tmp   ! [g/kg]
+  mixr_tmp = qx_to_mixr(QV(:,:,1:,:))  ! [kg/kg]
   
   ! --
   ! 4) Calculating Geopotential Altitude:
@@ -679,22 +679,8 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
   call Wind_UV2speeddir(U_Vel, V_Vel, windvel_tmp, winddir_tmp)
 
   ! --
-  ! 6) Converting mass-ratio [kg/kg] to mass-specific [g/m^3] values:
-  cloud_water_tmp = 1.0E3*MassRatio2MassVolume(cloud_water_tmp, &
-       temp_tmp(:,:,1:nlyr,:), press_tmp(:,:,1:nlyr,:) )  ! [g/m3]
-
-  rain_water_tmp = 1.0E3*MassRatio2MassVolume(rain_water_tmp, &
-       temp_tmp(:,:,1:nlyr,:), press_tmp(:,:,1:nlyr,:) )  ! [g/m3]
-
-  cloud_ice_tmp = 1.0E3*MassRatio2MassVolume(cloud_ice_tmp, &
-       temp_tmp(:,:,1:nlyr,:), press_tmp(:,:,1:nlyr,:) )  ! [g/m3]
-
-  snow_tmp = 1.0E3*MassRatio2MassVolume(snow_tmp, &
-       temp_tmp(:,:,1:nlyr,:), press_tmp(:,:,1:nlyr,:) )  ! [g/m3]
-
-  graupel_tmp = 1.0E3*MassRatio2MassVolume(graupel_tmp, &
-       temp_tmp(:,:,1:nlyr,:), press_tmp(:,:,1:nlyr,:) )  ! [g/m3]
-
+  ! 6) Converting Specific masses [kg/kg] to mass-volume [g/m^3]:
+  call Convert_Hydrometeors_units(.true.)
   
   ! --
   qidx = 15
@@ -714,7 +700,7 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
 
   return
 end subroutine read_arome
-! --------------------------------------------------------------------------------------
+! -------------------------------------------------------------------------------------/
 
 ! ______________________________________________________________________________________
 ! --------------------------------------------------------------------------------------
@@ -875,8 +861,6 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   ! 2) Converting Vapor mixing ratio to Relative Humidity
   relhum_tmp = mixr_to_rh(mixratio, press_tmp, temp_tmp)
 
-  mixr_tmp = 1E3*mixratio(:, :, 1:nlyr, :)   ! [g/kg]
-
   ! 3) Converting Wind U and V components to Windspeed and Direction:
   call Wind_UV2speeddir(U_Vel, V_vel, windvel_tmp, winddir_tmp)
 
@@ -884,21 +868,9 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   UnixTime = getUnixTime(TimeStamp)
 
   ! --
-  ! 5) Converting mass-ratio [kg/kg] to mass-specific [g/m^3] values:
-  cloud_water_tmp = 1.0E3*MassRatio2MassVolume(cloud_water_tmp, &
-       temp_tmp(:,:,1:nlyr,:), press_tmp(:,:,1:nlyr,:) )  ! [g/m3]
-  
-  rain_water_tmp = 1.0E3*MassRatio2MassVolume(rain_water_tmp, &
-       temp_tmp(:,:,1:nlyr,:), press_tmp(:,:,1:nlyr,:) )  ! [g/m3]
-  
-  cloud_ice_tmp = 1.0E3*MassRatio2MassVolume(cloud_ice_tmp, &
-       temp_tmp(:,:,1:nlyr,:), press_tmp(:,:,1:nlyr,:) )  ! [g/m3]
-  
-  snow_tmp = 1.0E3*MassRatio2MassVolume(snow_tmp, &
-       temp_tmp(:,:,1:nlyr,:), press_tmp(:,:,1:nlyr,:) )  ! [g/m3]
-  
-  graupel_tmp = 1.0E3*MassRatio2MassVolume(graupel_tmp, &
-       temp_tmp(:,:,1:nlyr,:), press_tmp(:,:,1:nlyr,:) )  ! [g/m3]
+  ! 5) Converting mass-ratio [kg/kg] to mass-volume [g/m^3] values:
+  mixr_tmp = mixratio(:, :, 1:nlyr, :)  ! [kg/kg]
+  call Convert_Hydrometeors_units(.false.)
 
   ! ****************************
   ! Retrieving Global Attribute:
@@ -1160,11 +1132,13 @@ end subroutine read_wyosonde
 !subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
 !     &LAYERS,freq_str,input_file,micro_phys,SELV,SLAT,SLON,origin_str)
 subroutine createncdf(ncflen, ncfile,NUMMU,NSTOKES,&
-     &input_file,micro_phys,origin_str)
+     input_file,micro_phys,origin_str)
   use netcdf
   use nctoys, only : check_nc
   use variables, only : nelv, elevations, n_freq, nlyr, ngridx, ngridy, hgt_tmp,&
-       & FREQ, lat, lon, PBLH, qidx
+       FREQ, lat, lon, PBLH, qidx, temp_tmp, press_tmp, relhum_tmp, mixr_tmp, &
+       cloud_water_tmp, rain_water_tmp, cloud_ice_tmp, snow_tmp, graupel_tmp, &
+       winddir_tmp, windvel_tmp
   implicit none
 
   integer, intent(in) :: ncflen
@@ -1201,8 +1175,8 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NSTOKES,&
   status = nf90_def_dim(ncid, "stokes", NSTOKES, stok_id)
   status = nf90_def_dim(ncid, "layer", NLYR, lyr_id)
   status = nf90_def_dim(ncid, "time", NF90_UNLIMITED, time_id)
-  status = nf90_def_dim(ncid, "xn", ngridx , xn_id)
-  status = nf90_def_dim(ncid, "yn", ngridy , yn_id)
+  status = nf90_def_dim(ncid, "lat", ngridx , xn_id)
+  status = nf90_def_dim(ncid, "lon", ngridy , yn_id)
 
   ! Define of variables
   status = nf90_def_var(ncid, "theta_z", NF90_REAL4, (/ mu_id /), var_mu_id)
@@ -1250,8 +1224,8 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NSTOKES,&
   status = nf90_def_var(ncid, "QIDX", NF90_INT4, (/xn_id, yn_id, time_id/), var_qidx_id)
   
   ! grid-based variables
-  status = nf90_def_var(ncid, "xn", NF90_INT, (/ xn_id /), var_xid)  ! time_id
-  status = nf90_def_var(ncid, "yn", NF90_INT, (/ yn_id /), var_yid)   ! time_id
+  !status = nf90_def_var(ncid, "xn", NF90_INT, (/ xn_id /), var_xid)  ! time_id
+  !status = nf90_def_var(ncid, "yn", NF90_INT, (/ yn_id /), var_yid)   ! time_id
 
   status = nf90_def_var(ncid, "elevation", NF90_REAL4, (/xn_id, yn_id/), var_elvid)
   status = nf90_def_var(ncid, "latitude", NF90_REAL4, (/xn_id, yn_id/), var_latid)
@@ -1342,8 +1316,8 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NSTOKES,&
   status = nf90_put_att(ncid, var_rh_id, "_FillValue",-999.9)
   
   status = nf90_put_att(ncid, var_qv_id, "short_name","qv")
-  status = nf90_put_att(ncid, var_qv_id, "long_name","specific humidity")
-  status = nf90_put_att(ncid, var_qv_id, "units","g m-3")
+  status = nf90_put_att(ncid, var_qv_id, "long_name","vapour mixing ratio")
+  status = nf90_put_att(ncid, var_qv_id, "units","kg/kg")
   status = nf90_put_att(ncid, var_qv_id, "_FillValue",-999.9)
 
   status = nf90_put_att(ncid, var_qc_id, "short_name","qc")
@@ -1434,10 +1408,10 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NSTOKES,&
   status = nf90_put_att(ncid, var_qidx_id, "note", "15=full quality")
 
   ! ***** Grid variables 
-  status = nf90_put_att(ncid, var_xid, "short_name", "Xn")
-  status = nf90_put_att(ncid, var_xid, "long_name", "X_grid")
-  status = nf90_put_att(ncid, var_yid, "short_name", "Yn")
-  status = nf90_put_att(ncid, var_yid, "long_name", "Y_grid")
+  !status = nf90_put_att(ncid, var_xid, "short_name", "Xn")
+  !status = nf90_put_att(ncid, var_xid, "long_name", "X_grid")
+  !status = nf90_put_att(ncid, var_yid, "short_name", "Yn")
+  !status = nf90_put_att(ncid, var_yid, "long_name", "Y_grid")
 
   status = nf90_put_att(ncid, var_elvid, "short_name", "ELV")
   status = nf90_put_att(ncid, var_elvid, "long_name", "Elevation")
@@ -1457,9 +1431,9 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NSTOKES,&
   status = nf90_put_att(ncid,NF90_GLOBAL,"Contact","Pablo.Saavedra@uib.no")
   status = nf90_put_att(ncid,NF90_GLOBAL,"Institution","Geophysical Institute, University of Bergen")
   status = nf90_put_att(ncid,NF90_GLOBAL,"License","CC-BY-SA")
-  ! End definitions
+  ! ********** End definitions *****************************
   status = nf90_enddef(ncid)
-
+  ! ********************************************************
   ! Writting variables that won't change during calculation:
   status = nf90_put_var(ncid, var_qidx_id, qidx)
   status = nf90_put_var(ncid, var_blh_id, PBLH)
@@ -1475,6 +1449,64 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NSTOKES,&
   status = nf90_put_var(ncid, var_elvid, real(hgt_tmp(:,:,0,1),4) )
   status = nf90_put_var(ncid, var_latid, lat)
   status = nf90_put_var(ncid, var_lonid, lon)
+
+  ! ********** Writting Station level Variables ****************************
+  ! Writting the 2m Temperature
+  status = nf90_put_var(ncid, var_te2_id, temp_tmp(:,:,0:0,:) )
+  call check_nc(status, 'T2m variable cannot be written!', .true.)
+
+  ! Writting the 2m RH
+  status = nf90_put_var(ncid, var_rh2_id, relhum_tmp(:,:,0:0,:) )
+  call check_nc(status, 'RH2m variable cannot be written!', .true.)
+  
+  ! Writting the 2m Air Pressure
+  status = nf90_put_var(ncid, var_pr2_id, press_tmp(:,:,0:0,:) )
+  call check_nc(status, 'P2m variable cannot be written!', .true.)
+  
+  ! ********** Writting Profile Variables ****************************
+  ! Writting the Temperature
+  status = nf90_put_var(ncid, var_te_id, temp_tmp(:,:,1:,:) )
+  if(status /= nf90_NoErr) stop 'Temperature profile cannot be written!'
+  
+  ! Writting the Pressure
+  status = nf90_put_var(ncid, var_pr_id, press_tmp(:,:,1:,:) )
+  if(status /= nf90_NoErr) stop 'Pressure profile cannot be written!'
+
+  ! Writting the Relative Humidity
+  status = nf90_put_var(ncid, var_rh_id, relhum_tmp(:,:,1:,:) )
+  if(status /= nf90_NoErr) stop 'RH profile cannot be written!'
+
+  ! Writting the QV variable
+  status = nf90_put_var(ncid, var_qv_id, mixr_tmp )  
+  if(status /= nf90_NoErr) stop 'QV cannot be written!'
+  
+  ! Writting the QC variable
+  status = nf90_put_var(ncid, var_qc_id, cloud_water_tmp )
+  if(status /= nf90_NoErr) stop 'QC cannot be written!'
+
+  ! Writting the QR variable
+  status = nf90_put_var(ncid, var_qr_id, rain_water_tmp )
+  if(status /= nf90_NoErr) stop 'QR cannot be written!'
+
+  ! Writting the QI variable
+  status = nf90_put_var(ncid, var_qi_id, cloud_ice_tmp )
+  if(status /= nf90_NoErr) stop 'QI cannot be written!'
+
+  ! Writting the QS variable
+  status = nf90_put_var(ncid, var_qs_id, snow_tmp )
+  if(status /= nf90_NoErr) stop 'QS cannot be written!'
+
+  ! Writting the QG variable
+  status = nf90_put_var(ncid, var_qg_id, graupel_tmp )
+  if(status /= nf90_NoErr) stop 'QG cannot be written!'
+
+  ! Writting the Wind Direction variable
+  status = nf90_put_var(ncid, var_wd_id, winddir_tmp )
+  if(status /= nf90_NoErr) stop 'WD cannot be written!'
+  ! Writting the Wind Speed variable
+  status = nf90_put_var(ncid, var_ws_id, windvel_tmp )
+  if(status /= nf90_NoErr) stop 'WS cannot be written!'
+  ! ---/
   
   status = nf90_close(ncid)
   call check_nc(status, 'Error closing after creation NetCDF', .true.)
@@ -1527,8 +1559,6 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
 
   read(OUT_FILE(idx:),'(I03XI03)') x_grid, y_grid
   if(x_grid.NE.nx.OR.y_grid.NE.ny) stop 'ERROR passing x_grid or y_grid in storecdf'
-  !x_grid = nx - nx_in + 1
-  !y_grid = ny - ny_in + 1
   
   ! * Date and * getting microphysics from OUT_FILE:
   date = getUnixTime(UnixTime(time_len) )
@@ -1646,16 +1676,11 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   status = nf90_inq_varid(ncid, "TB_DN_GRD", VarId)
   call check_nc(status, 'TB_DN GRD cannot be assigned!', .true.)
   !status = nf90_put_var(ncid,VarId,OUTVAR(:,:,2,:),start=(/1,1,1,time_len/),count=(/NUMMU,2,NOUTLEVELS,1/))
-  status = nf90_put_var(ncid,VarId,TB_THTA(:NANG,:,2,2), &
-       start=(/1,i_freq,1,x_grid,y_grid,time_len/), &
-       count=(/NANG,1,2,1,1,1/))
+  status = nf90_put_var(ncid, VarId, TB_THTA(:NANG,:, 2, 2), &
+       start=(/1, i_freq, 1, x_grid, y_grid, time_len/), &
+       count=(/NANG, 1, 2, 1, 1, 1/))
   call check_nc(status, 'TB_DN GRD values cannot be stored!', .true.)
     
-  ! writting x_grid and y grid indexes:
-  status = nf90_inq_varid(ncid, "xn", VarId)
-  status = nf90_put_var(ncid, VarId, nx, start = (/x_grid/))
-  status = nf90_inq_varid(ncid,"yn", VarId)
-  status = nf90_put_var(ncid, VarId, ny, start = (/y_grid/))
   
   status = NF90_CLOSE(ncid)
   call check_nc(status, 'Closing NetCDF (storencdf) not possible!', .true.)
@@ -1675,18 +1700,11 @@ end subroutine storencdf
 ! ----------------------------------------------------------------------------
 ! SUBROUTINE Microphysics variable storege for the RT3/4 NetCDF output file
 !
-! ----------------------------------------------------------------------------
-!!$subroutine MP_storencdf(OUT_FILE,time_len,i_freq,y_grid,x_grid,NLYR,LAYERS,TEMP,PRESS,RH,QV,QC,&
-!!$     &WD, WS, KEXTQC, KEXTATM, KEXTTOT, ALBEDO, BACKSCATT, GCOEFF)
-
 subroutine MP_storencdf(OUT_FILE, time_len, i_freq)
   use netcdf
   use nctoys, only : check_nc
   use variables, only : ngridx, ngridy, nx, ny, nlyr, kextcloud, KEXTATMO, &
-       temp_lev, press_lev, relhum_lev, hgt_lev, mixr_tmp, &
-       winddir_tmp, windvel_tmp, &
        kextrain, kextice, kextsnow, kextgraupel, &
-       cloud_water, rain_water, cloud_ice, snow, graupel, &
        salbtot, back, g_coeff
   
   implicit none
@@ -1697,10 +1715,6 @@ subroutine MP_storencdf(OUT_FILE, time_len, i_freq)
   integer :: status, ncid, VarId
   integer :: nDims, unlimdimid, freq_id
   character(len=len(OUT_FILE)+3) :: ncfile
-  character(len=30) :: dim_name
-  real(kind=8) :: AllFreq(30), freq
-  integer :: freq_len
-
 
   ncfile = OUT_FILE
   status = NF90_OPEN(ncfile, MODE=NF90_WRITE, NCID=ncid)
@@ -1709,97 +1723,7 @@ subroutine MP_storencdf(OUT_FILE, time_len, i_freq)
   ! Getting NetCDF file dimensions and lengths:
 
   ! For frequency:
-  AllFreq = -99.
-  status = nf90_inq_varid(ncid,"freq",freq_id)
-  status = nf90_inquire_dimension(ncid,freq_id,dim_name,freq_len)
-  status = nf90_get_var(ncid,freq_id,AllFreq(1:freq_len))
-
   if(i_freq.LT.1) stop 'ERROR: finding the frequency index in NP_STORENCDF'
-
-  ! ********** Writting Station level Variables ****************************
-  ! Writting the 2m Temperature
-  status = nf90_inq_varid(ncid, "T2m", VarId)
-  if(status /= nf90_NoErr) stop 'T2m variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, temp_lev(:,:,0:0), start=(/1 , 1, time_len/), count=(/ngridx, ngridy, 1/))
-  call check_nc(status, 'T2m variable cannot be written!', .true.)
-
-  ! Writting the 2m RH
-  status = nf90_inq_varid(ncid, "RH2m", VarId)
-  if(status /= nf90_NoErr) stop 'RH2m variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, relhum_lev(:,:,0:0), start=(/1, 1, time_len/), count=(/ngridx, ngridy, 1/))
-  call check_nc(status, 'RH2m variable cannot be written!', .true.)
-  
-  ! Writting the 2m Air Pressure
-  status = nf90_inq_varid(ncid, "P2m", VarId)
-  if(status /= nf90_NoErr) stop 'Air pressure variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, press_lev(:,:,0:0), start=(/1, 1, time_len/) )
-  call check_nc(status, 'P2m variable cannot be written!', .true.)
-  
-  ! ********** Writting Profile Variables ****************************
-  ! Writting the Temperature
-  status = nf90_inq_varid(ncid, "temp", VarId)
-  if(status /= nf90_NoErr) stop 'Temperature profile ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, temp_lev(:,:,1:nlyr), start=(/1, 1, 1, time_len/) )
-  if(status /= nf90_NoErr) stop 'Temperature profile cannot be written!'
-  
-  ! Writting the Pressure
-  status = nf90_inq_varid(ncid, "press", VarId)
-  if(status /= nf90_NoErr) stop 'Pressure profile ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, press_lev(:,:,1:nlyr), start=(/1, 1, 1, time_len/) )
-  if(status /= nf90_NoErr) stop 'Pressure profile cannot be written!'
-
-  ! Writting the Relative Humidity
-  status = nf90_inq_varid(ncid, "rh", VarId)
-  if(status /= nf90_NoErr) stop 'RH profile ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, relhum_lev(:,:,1:nlyr), start=(/1, 1 ,1, time_len/) )
-  if(status /= nf90_NoErr) stop 'RH profile cannot be written!'
-
-  ! Writting the QV variable
-  status = nf90_inq_varid(ncid, "qv", VarId)
-  if(status /= nf90_NoErr) stop 'QV variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, mixr_tmp(:,:,:,time_len), &
-       start=(/1, 1, 1, time_len/) )
-  if(status /= nf90_NoErr) stop 'QV cannot be written!'
-  ! Writting the QC variable
-  status = nf90_inq_varid(ncid, "qc", VarId)
-  if(status /= nf90_NoErr) stop 'QC variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, cloud_water, start=(/1, 1, 1, time_len/) )
-  if(status /= nf90_NoErr) stop 'QC cannot be written!'
-
-  ! Writting the QR variable
-  status = nf90_inq_varid(ncid, "qr", VarId)
-  if(status /= nf90_NoErr) stop 'QR variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, rain_water, start=(/1, 1, 1, time_len/) )
-  if(status /= nf90_NoErr) stop 'QR cannot be written!'
-
-  ! Writting the QI variable
-  status = nf90_inq_varid(ncid, "qi", VarId)
-  if(status /= nf90_NoErr) stop 'QI variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, cloud_ice, start=(/1, 1, 1, time_len/) )
-  if(status /= nf90_NoErr) stop 'QI cannot be written!'
-
-  ! Writting the QS variable
-  status = nf90_inq_varid(ncid, "qs", VarId)
-  if(status /= nf90_NoErr) stop 'QS variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, snow, start=(/1, 1, 1, time_len/) )
-  if(status /= nf90_NoErr) stop 'QS cannot be written!'
-
-  ! Writting the QG variable
-  status = nf90_inq_varid(ncid, "qg", VarId)
-  if(status /= nf90_NoErr) stop 'QG variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, graupel, start=(/1, 1, 1, time_len/) )
-  if(status /= nf90_NoErr) stop 'QG cannot be written!'
-
-  ! Writting the Wind Direction variable
-  status = nf90_inq_varid(ncid, "wd", VarId)
-  if(status /= nf90_NoErr) stop 'WD variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, winddir_tmp(:,:,:, time_len), start=(/1, 1, 1, time_len/) )
-  if(status /= nf90_NoErr) stop 'WD cannot be written!'
-  ! Writting the Wind Speed variable
-  status = nf90_inq_varid(ncid, "ws", VarId)
-  if(status /= nf90_NoErr) stop 'WS variable ID cannot be read!'
-  status = nf90_put_var(ncid, VarId, windvel_tmp(:,:,:, time_len), start=(/1, 1, 1, time_len/) )
-  if(status /= nf90_NoErr) stop 'WS cannot be written!'
 
   ! ---------------------------------------
   ! Writting the ATMOSPHERIC Extintion coeff
@@ -1905,89 +1829,132 @@ subroutine allocate_RT3_variables
   return
 end subroutine allocate_RT3_variables
 
+! ---------------------------------------------------------------------
+! Converting hydrometeor variable units from kg/kg to g/m^3
+!
+subroutine Convert_Hydrometeors_units(MASK)
+  use meteo_tools, only: MassRatio2MassVolume, qx_to_mixr
+  use variables, only: temp_tmp, press_tmp, cloud_water_tmp, &
+       rain_water_tmp, cloud_ice_tmp, &
+       snow_tmp, graupel_tmp, mixr_tmp
+  implicit none
+  logical, intent(in) :: MASK
 
-!!$! ROUTINE TO CONVERT MIXING RATIO TO RH
-!!$subroutine mixr2rh(nx, ny, nz, nt, MIXR, P, T, RH)
-!!$  implicit none
-!!$  integer, intent(in) :: nx, ny, nz, nt
-!!$  real(kind=8), intent(in), dimension(nx,ny,nz,nt) :: MIXR, P, T
-!!$  real(kind=8), intent(out), dimension(nx,ny,nz,nt) :: RH
-!!$
-!!$  integer :: i, j
-!!$  real, dimension(nx,ny,nz,nt) :: PWS, etha, A
-!!$  real, parameter :: COEFF = 2.16679 ! [g K J^-1]
-!!$  real, parameter :: Tc = 647.096  ! critical temperature [K]
-!!$  real, parameter :: Pc = 220640   ! critical pressure [hPa]
-!!$  real, parameter :: B  = 0.6219907 ! constant for air [kg/kg]
-!!$  real, parameter :: CC(6) = (/ -7.85951783, 1.84408259, &
-!!$       & -11.7866497, 22.6807411, -15.9618719, 1.80122502 /)
-!!$  real, parameter :: EE(6) = (/1.0, 1.5, 3.0, 3.5, 4.0, 7.5/)
-!!$
-!!$  etha = 1.0d0 - T/Tc
-!!$  A = 0.0d0
-!!$  do i=1, 6
-!!$     A = A + CC(i)*(etha**EE(i))
-!!$  end do
-!!$  PWS = Pc*exp(A*Tc/T)
-!!$  !RH = 1E-3*MIXR*T/PWS/COEFF
-!!$  !RH = 100*PW/PWS
-!!$  RH = 100*MIXR*P/(MIXR + B)/PWS
-!!$end subroutine mixr2rh
-!!$! ----
+  if(MASK) then
+     ! TRUE if variables are specific quantities and 
+     ! need to be converted to mixing rations:
+     cloud_water_tmp = qx_to_mixr(cloud_water_tmp)
+     rain_water_tmp  = qx_to_mixr(rain_water_tmp)
+     cloud_ice_tmp   = qx_to_mixr(cloud_ice_tmp)
+     snow_tmp = qx_to_mixr(snow_tmp)
+     graupel_tmp = qx_to_mixr(graupel_tmp)
+  end if
+  
+  cloud_water_tmp = 1.0E3*MassRatio2MassVolume(cloud_water_tmp, &
+       & temp_tmp(:,:,1:,:), press_tmp(:,:,1:,:), mixr_tmp )
 
-!!$! _________________________________________________________________
-!!$! Specific Humidity to Relative Humidity
-!!$subroutine qv2rh(nx, ny, nz, nt, QV, P, T, RH)
-!!$  implicit none
-!!$  integer, intent(in) :: nx, ny, nz, nt
-!!$  real(kind=8), intent(in), dimension(nx,ny,nz,nt) :: QV, P, T
-!!$  real(kind=8), intent(out), dimension(nx,ny,nz,nt) :: RH
-!!$
-!!$  real(kind=8) :: MIXR(nx, ny, nz, nt)
-!!$
-!!$  ! Converting Specific Humidity to Mixing Ratio:
-!!$  MIXR = QV/(1.0 - QV)
-!!$
-!!$  call mixr2rh(nx, ny, nz, nt, MIXR, P, T, RH)
-!!$  return
-!!$end subroutine qv2rh
-!!$! ----
+  rain_water_tmp = 1.0E3*MassRatio2MassVolume(rain_water_tmp, &
+       temp_tmp(:,:,1:,:), press_tmp(:,:,1:,:), mixr_tmp )
 
-!!$subroutine Calculate_GeopotentialZ(NX, NY, NZ, NT, T, P, MIXR, Z) 
-!!$  implicit none
-!!$  interface
-!!$     elemental function VirtualTemperature(T, MIXR) result (TV)
-!!$       implicit none
-!!$       real(kind=8), intent(in) :: T, MIXR
-!!$       real(kind=8) :: TV
-!!$     end function VirtualTemperature
-!!$  end interface
-!!$  integer, intent(in) :: NX, NY, NZ, NT
-!!$  real(kind=8), intent(in), dimension(NX,NY,0:NZ,NT) :: T, P
-!!$  real(kind=8), intent(in), dimension(NX,NY,NZ,NT) :: MIXR
-!!$  real(kind=8), intent(out), dimension(NX,NY,NZ,NT) :: Z
+  cloud_ice_tmp = 1.0E3*MassRatio2MassVolume(cloud_ice_tmp, &
+       temp_tmp(:,:,1:,:), press_tmp(:,:,1:,:), mixr_tmp )
+
+  snow_tmp = 1.0E3*MassRatio2MassVolume(snow_tmp, &
+       temp_tmp(:,:,1:,:), press_tmp(:,:,1:,:), mixr_tmp )
+
+  graupel_tmp = 1.0E3*MassRatio2MassVolume(graupel_tmp, &
+       temp_tmp(:,:,1:,:), press_tmp(:,:,1:,:), mixr_tmp )
+
+end subroutine Convert_Hydrometeors_units
+! -----/
+
+
+! ----------------------------------------------------------------------------
+!!$subroutine MP_storencdf(OUT_FILE,time_len,i_freq,y_grid,x_grid,NLYR,LAYERS,TEMP,PRESS,RH,QV,QC,&
+!!$     &WD, WS, KEXTQC, KEXTATM, KEXTTOT, ALBEDO, BACKSCATT, GCOEFF)
 !!$
-!!$  ! ** local variables
-!!$  integer :: i
-!!$  real(kind=8), allocatable, dimension(:,:,:,:) :: TV, del_P, TVdP
-!!$  real, parameter :: Rd = 287         ! [J/kg/K] dry air gass constant
-!!$  real, parameter :: g0 = 9.807       ! [m/s^2]  gravity constant
+!!$  ! ********** Writting Station level Variables ****************************
+!!$  ! Writting the 2m Temperature
+!!$  status = nf90_inq_varid(ncid, "T2m", VarId)
+!!$  if(status /= nf90_NoErr) stop 'T2m variable ID cannot be read!'
+!!$  status = nf90_put_var(ncid, VarId, temp_lev(:,:,0:0), start=(/1 , 1, time_len/), count=(/ngridx, ngridy, 1/))
+!!$  call check_nc(status, 'T2m variable cannot be written!', .true.)
 !!$
-!!$
-!!$  allocate(TV(NX, NY, NZ, NT) )
-!!$  !call Calculate_VirtualTemperature(NX, NY, NZ, NT, T(:,:,1:NZ,:), MIXR, TV)
-!!$  TV = VirtualTemperature(T(:,:,1:NZ,:), MIXR)
+!!$  ! Writting the 2m RH
+!!$  status = nf90_inq_varid(ncid, "RH2m", VarId)
+!!$  if(status /= nf90_NoErr) stop 'RH2m variable ID cannot be read!'
+!!$  status = nf90_put_var(ncid, VarId, relhum_lev(:,:,0:0), start=(/1, 1, time_len/), count=(/ngridx, ngridy, 1/))
+!!$  call check_nc(status, 'RH2m variable cannot be written!', .true.)
 !!$  
-!!$  del_P = P(:,:,0:NZ-1,:) - P(:,:,1:NZ,:)
+!!$  ! Writting the 2m Air Pressure
+!!$  status = nf90_inq_varid(ncid, "P2m", VarId)
+!!$  if(status /= nf90_NoErr) stop 'Air pressure variable ID cannot be read!'
+!!$  status = nf90_put_var(ncid, VarId, press_lev(:,:,0:0), start=(/1, 1, time_len/) )
+!!$  call check_nc(status, 'P2m variable cannot be written!', .true.)
+!!$  
+!!$  ! ********** Writting Profile Variables ****************************
+!!$  ! Writting the Temperature
+!!$  status = nf90_inq_varid(ncid, "temp", VarId)
+!!$  if(status /= nf90_NoErr) stop 'Temperature profile ID cannot be read!'
+!!$  status = nf90_put_var(ncid, VarId, temp_lev(:,:,1:nlyr), start=(/1, 1, 1, time_len/) )
+!!$  if(status /= nf90_NoErr) stop 'Temperature profile cannot be written!'
+!!$  
+!!$  ! Writting the Pressure
+!!$  status = nf90_inq_varid(ncid, "press", VarId)
+!!$  if(status /= nf90_NoErr) stop 'Pressure profile ID cannot be read!'
+!!$  status = nf90_put_var(ncid, VarId, press_lev(:,:,1:nlyr), start=(/1, 1, 1, time_len/) )
+!!$  if(status /= nf90_NoErr) stop 'Pressure profile cannot be written!'
 !!$
-!!$  ! temporal integrable variable = Tv/P *dP
-!!$  TVdP = TV*del_P/P(:,:,1:NZ,:)
+!!$  ! Writting the Relative Humidity
+!!$  status = nf90_inq_varid(ncid, "rh", VarId)
+!!$  if(status /= nf90_NoErr) stop 'RH profile ID cannot be read!'
+!!$  status = nf90_put_var(ncid, VarId, relhum_lev(:,:,1:nlyr), start=(/1, 1 ,1, time_len/) )
+!!$  if(status /= nf90_NoErr) stop 'RH profile cannot be written!'
 !!$
-!!$  do i = 1, NZ
-!!$     Z(:,:,i,:) = sum(TVdP(:,:,1:i,:), dim=3)
-!!$  end do
-!!$  Z = (1E-3*Rd/g0)*Z  ! converting to [km]
+!!$  ! Writting the QV variable
+!!$  status = nf90_inq_varid(ncid, "qv", VarId)
+!!$  if(status /= nf90_NoErr) stop 'QV variable ID cannot be read!'
+!!$  status = nf90_put_var(ncid, VarId, mixr_tmp(:,:,:,time_len), &
+!!$       start=(/1, 1, 1, time_len/) )
+!!$  if(status /= nf90_NoErr) stop 'QV cannot be written!'
+!!$  ! Writting the QC variable
+!!$  status = nf90_inq_varid(ncid, "qc", VarId)
+!!$  if(status /= nf90_NoErr) stop 'QC variable ID cannot be read!'
+!!$  status = nf90_put_var(ncid, VarId, cloud_water, start=(/1, 1, 1, time_len/) )
+!!$  if(status /= nf90_NoErr) stop 'QC cannot be written!'
 !!$
-!!$  return
-!!$end subroutine Calculate_GeopotentialZ
-!!$! -----
+!!$  ! Writting the QR variable
+!!$  status = nf90_inq_varid(ncid, "qr", VarId)
+!!$  if(status /= nf90_NoErr) stop 'QR variable ID cannot be read!'
+!!$  status = nf90_put_var(ncid, VarId, rain_water, start=(/1, 1, 1, time_len/) )
+!!$  if(status /= nf90_NoErr) stop 'QR cannot be written!'
+!!$
+!!$  ! Writting the QI variable
+!!$  status = nf90_inq_varid(ncid, "qi", VarId)
+!!$  if(status /= nf90_NoErr) stop 'QI variable ID cannot be read!'
+!!$  status = nf90_put_var(ncid, VarId, cloud_ice, start=(/1, 1, 1, time_len/) )
+!!$  if(status /= nf90_NoErr) stop 'QI cannot be written!'
+!!$
+!!$  ! Writting the QS variable
+!!$  status = nf90_inq_varid(ncid, "qs", VarId)
+!!$  if(status /= nf90_NoErr) stop 'QS variable ID cannot be read!'
+!!$  status = nf90_put_var(ncid, VarId, snow, start=(/1, 1, 1, time_len/) )
+!!$  if(status /= nf90_NoErr) stop 'QS cannot be written!'
+!!$
+!!$  ! Writting the QG variable
+!!$  status = nf90_inq_varid(ncid, "qg", VarId)
+!!$  if(status /= nf90_NoErr) stop 'QG variable ID cannot be read!'
+!!$  status = nf90_put_var(ncid, VarId, graupel, start=(/1, 1, 1, time_len/) )
+!!$  if(status /= nf90_NoErr) stop 'QG cannot be written!'
+!!$
+!!$  ! Writting the Wind Direction variable
+!!$  status = nf90_inq_varid(ncid, "wd", VarId)
+!!$  if(status /= nf90_NoErr) stop 'WD variable ID cannot be read!'
+!!$  status = nf90_put_var(ncid, VarId, winddir_tmp(:,:,:, time_len), start=(/1, 1, 1, time_len/) )
+!!$  if(status /= nf90_NoErr) stop 'WD cannot be written!'
+!!$  ! Writting the Wind Speed variable
+!!$  status = nf90_inq_varid(ncid, "ws", VarId)
+!!$  if(status /= nf90_NoErr) stop 'WS variable ID cannot be read!'
+!!$  status = nf90_put_var(ncid, VarId, windvel_tmp(:,:,:, time_len), start=(/1, 1, 1, time_len/) )
+!!$  if(status /= nf90_NoErr) stop 'WS cannot be written!'
+
