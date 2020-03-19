@@ -1193,43 +1193,72 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NSTOKES,&
   ! Define atmospheric state variables
   ! 1. Station level variables 
   status = nf90_def_var(ncid, "T2m", NF90_REAL4, (/xn_id, yn_id, time_id/), var_te2_id)
+  status = nf90_def_var_deflate(ncid, var_te2_id, 0, 1, 9)
   status = nf90_def_var(ncid, "RH2m", NF90_REAL4, (/xn_id, yn_id, time_id/), var_rh2_id)
+  status = nf90_def_var_deflate(ncid, var_rh2_id, 0, 1, 9)
   status = nf90_def_var(ncid, "P2m", NF90_REAL4, (/xn_id, yn_id, time_id/), var_pr2_id)
+  status = nf90_def_var_deflate(ncid, var_pr2_id, 0, 1, 9)
   status = nf90_def_var(ncid, "PBLH", NF90_REAL4, (/xn_id, yn_id, time_id/), var_blh_id)
+  status = nf90_def_var_deflate(ncid, var_blh_id, 0, 1, 9)
   
   ! 2. Atmospheric Profile variables 
   status = nf90_def_var(ncid, "temp", NF90_REAL4, (/xn_id, yn_id, lyr_id, time_id/), var_te_id)
+  status = nf90_def_var_deflate(ncid, var_te_id, 0, 1, 9)
   status = nf90_def_var(ncid, "press", NF90_REAL4, (/xn_id, yn_id, lyr_id, time_id/), var_pr_id)
+  status = nf90_def_var_deflate(ncid, var_pr_id, 0, 1, 9)
   status = nf90_def_var(ncid, "rh", NF90_REAL4, (/xn_id, yn_id, lyr_id, time_id/), var_rh_id)
+  status = nf90_def_var_deflate(ncid, var_rh_id, 0, 1, 9)
   status = nf90_def_var(ncid, "qv", NF90_REAL4, (/xn_id, yn_id, lyr_id, time_id/), var_qv_id)
+  status = nf90_def_var_deflate(ncid, var_qv_id, 0, 1, 9)
   status = nf90_def_var(ncid, "qc", NF90_REAL4, (/xn_id, yn_id, lyr_id, time_id/), var_qc_id)
+  status = nf90_def_var_deflate(ncid, var_qc_id, 0, 1, 9)
   status = nf90_def_var(ncid, "qr", NF90_REAL4, (/xn_id, yn_id, lyr_id, time_id/), var_qr_id)
+  status = nf90_def_var_deflate(ncid, var_qr_id, 0, 1, 9)
   status = nf90_def_var(ncid, "qs", NF90_REAL4, (/xn_id, yn_id, lyr_id, time_id/), var_qs_id)
+  status = nf90_def_var_deflate(ncid, var_qs_id, 0, 1, 9)
   status = nf90_def_var(ncid, "qg", NF90_REAL4, (/xn_id, yn_id, lyr_id, time_id/), var_qg_id)
+  status = nf90_def_var_deflate(ncid, var_qg_id, 0, 1, 9)
   status = nf90_def_var(ncid, "qi", NF90_REAL4, (/xn_id, yn_id, lyr_id, time_id/), var_qi_id)
+  status = nf90_def_var_deflate(ncid, var_qi_id, 0, 1, 9)
   status = nf90_def_var(ncid, "wd", NF90_REAL4, (/xn_id, yn_id, lyr_id, time_id/), var_wd_id)
+  status = nf90_def_var_deflate(ncid, var_wd_id, 0, 1, 9)
   status = nf90_def_var(ncid, "ws", NF90_REAL4, (/xn_id, yn_id, lyr_id, time_id/), var_ws_id)
+  status = nf90_def_var_deflate(ncid, var_ws_id, 0, 1, 9)
+  
   ! Definition of Micro-physics frequency dependent variables (Profiles)
   status = nf90_def_var(ncid, "kext_atm", NF90_REAL4, (/xn_id, yn_id, lyr_id, freq_id, time_id/), var_kextatm_id)
+  status = nf90_def_var_deflate(ncid, var_kextatm_id, 0, 1, 9)
   status = nf90_def_var(ncid, "kext_qc", NF90_REAL4, (/xn_id, yn_id, lyr_id, freq_id, time_id/), var_kextqc_id)
+  status = nf90_def_var_deflate(ncid, var_kextqc_id, 0, 1, 9)
   status = nf90_def_var(ncid, "kext_qr", NF90_REAL4, (/xn_id, yn_id, lyr_id, freq_id, time_id/), var_kextqr_id)
+  status = nf90_def_var_deflate(ncid, var_kextqr_id, 0, 1, 9)
   status = nf90_def_var(ncid, "kext_qs", NF90_REAL4, (/xn_id, yn_id, lyr_id, freq_id, time_id/), var_kextqs_id)
+  status = nf90_def_var_deflate(ncid, var_kextqs_id, 0, 1, 9)
   status = nf90_def_var(ncid, "kext_qg", NF90_REAL4, (/xn_id, yn_id, lyr_id, freq_id, time_id/), var_kextqg_id)
+  status = nf90_def_var_deflate(ncid, var_kextqg_id, 0, 1, 9)
   status = nf90_def_var(ncid, "kext_qi", NF90_REAL4, (/xn_id, yn_id, lyr_id, freq_id, time_id/), var_kextqi_id)
+  status = nf90_def_var_deflate(ncid, var_kextqi_id, 0, 1, 9)
   status = nf90_def_var(ncid, "alb_tot", NF90_REAL4, (/xn_id, yn_id, lyr_id, freq_id, time_id/), var_salbtot_id)
+  status = nf90_def_var_deflate(ncid, var_salbtot_id, 0, 1, 9)
   status = nf90_def_var(ncid, "back_scatt", NF90_REAL4, (/xn_id, yn_id, lyr_id, freq_id, time_id/), var_backsct_id)
+  status = nf90_def_var_deflate(ncid, var_backsct_id, 0, 1, 9)
   status = nf90_def_var(ncid, "g_coeff", NF90_REAL4, (/xn_id, yn_id, lyr_id, freq_id, time_id/), var_gcoeff_id)
+  status = nf90_def_var_deflate(ncid, var_gcoeff_id, 0, 1, 9)
 
   ! profile quality index
   status = nf90_def_var(ncid, "QIDX", NF90_INT4, (/xn_id, yn_id, time_id/), var_qidx_id)
+  status = nf90_def_var_deflate(ncid, var_qidx_id, 0, 1, 9)
   
   ! grid-based variables
   !status = nf90_def_var(ncid, "xn", NF90_INT, (/ xn_id /), var_xid)  ! time_id
   !status = nf90_def_var(ncid, "yn", NF90_INT, (/ yn_id /), var_yid)   ! time_id
 
   status = nf90_def_var(ncid, "elevation", NF90_REAL4, (/xn_id, yn_id/), var_elvid)
+  status = nf90_def_var_deflate(ncid, var_elvid, 0, 1, 9)
   status = nf90_def_var(ncid, "latitude", NF90_REAL4, (/xn_id, yn_id/), var_latid)
+  status = nf90_def_var_deflate(ncid, var_latid, 0, 1, 9)
   status = nf90_def_var(ncid, "longitude", NF90_REAL4, (/xn_id, yn_id/), var_lonid)
+  status = nf90_def_var_deflate(ncid, var_lonid, 0, 1, 9)
 
   ! ***********************************************
   ! Adding Attributes for Variables
@@ -1299,6 +1328,7 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NSTOKES,&
   status = nf90_put_att(ncid, var_blh_id, "units","m")
   status = nf90_put_att(ncid, var_blh_id, "_FillValue",-999.9)
 
+  
   ! Attributes for Profile variables
   status = nf90_put_att(ncid, var_te_id, "short_name","temp")
   status = nf90_put_att(ncid, var_te_id, "long_name","temperature")
