@@ -39,7 +39,7 @@ C             each L value.  Each line contains six values.
         READ (4,*) K, COEF(1,L), COEF(2,L), COEF(3,L), COEF(4,L),
      .                COEF(5,L), COEF(6,L)
       ENDDO
-      CLOSE (4)
+      CLOSE (4, status='DELETE')  ! PSG: added-> status='DELETE'
 
       IF (DELTAM .EQ. 'Y') THEN
         IF (NUMMU+1 .LE. NLEGEN+1) THEN

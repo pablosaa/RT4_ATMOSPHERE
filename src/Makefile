@@ -1,8 +1,14 @@
-CF = gfortran
+#FC exported by BASE_PATH/Makefile
+
+# GNU C compiler:
 CC = gcc
 
-LFLAG = -fopenmp -c -fno-automatic -std=legacy
+LFLAG = -c -fno-automatic -std=legacy
 OFLAG = -o $@
+
+# MPI library:
+MPIINC = $(shell pkg-config --cflags ompi-f90)
+MPILIB = $(shell pkg-config --libs ompi-f90)
 
 #BASE = .. #/home/pga082/GFI/scripts/RT3_NCDF
 OBJ = $(BASE)/obj
@@ -21,38 +27,38 @@ $(BIN)/RS_RT3_run: $(OBJ)/RS_rt3.o $(OBJ)/rt3.o $(OBJ)/radtran3.o $(OBJ)/radutil
           dsd_utilities.o Fresnel_surf.o RT_ncdf_IO.o mitt_time.o -L/usr/lib -lnetcdff
 #
 $(OBJ)/RS_rt3.o: $(SRC)/RS_rt3.f $(SRC)/parameters.inc
-	gfortran $(LFLAG) $(OFLAG) $(SRC)/RS_rt3.f
+	$(FC) $(LFLAG) $(OFLAG) $(SRC)/RS_rt3.f $(MPIINC) $(MPILIB)
 #
 $(OBJ)/rt3.o: $(SRC)/rt3.f
-	gfortran $(LFLAG) $(OFLAG) $(SRC)/rt3.f
+	$(FC) $(LFLAG) $(OFLAG) $(SRC)/rt3.f
 #
 $(OBJ)/Fresnel_surf.o: $(SRC)/Fresnel_surf.f
-	gfortran $(LFLAG) $(OFLAG) $(SRC)/Fresnel_surf.f
+	$(FC) $(LFLAG) $(OFLAG) $(SRC)/Fresnel_surf.f
 #
 $(OBJ)/radtran3.o: $(SRC)/radtran3.f
-	gfortran $(LFLAG) $(OFLAG) $(SRC)/radtran3.f
+	$(FC) $(LFLAG) $(OFLAG) $(SRC)/radtran3.f
 #
 $(OBJ)/radutil3.o: $(SRC)/radutil3.f
-	gfortran $(LFLAG) $(OFLAG) $(SRC)/radutil3.f
+	$(FC) $(LFLAG) $(OFLAG) $(SRC)/radutil3.f
 #
 $(OBJ)/radscat3.o: $(SRC)/radscat3.f
-	gfortran $(LFLAG) $(OFLAG) $(SRC)/radscat3.f
+	$(FC) $(LFLAG) $(OFLAG) $(SRC)/radscat3.f
 #
 $(OBJ)/radintg3.o: $(SRC)/radintg3.f
-	gfortran $(LFLAG) $(OFLAG) $(SRC)/radintg3.f
+	$(FC) $(LFLAG) $(OFLAG) $(SRC)/radintg3.f
 #
 $(OBJ)/radmat.o: $(SRC)/radmat.f
-	gfortran $(LFLAG) $(OFLAG) $(SRC)/radmat.f
+	$(FC) $(LFLAG) $(OFLAG) $(SRC)/radmat.f
 #
 $(OBJ)/scat_utilities.o: $(SRC)/scat_utilities.f
-	gfortran $(LFLAG) $(OFLAG) $(SRC)/scat_utilities.f
+	$(FC) $(LFLAG) $(OFLAG) $(SRC)/scat_utilities.f
 #
 $(OBJ)/dsd_utilities.o: $(SRC)/dsd_utilities.f
-	gfortran $(LFLAG) $(OFLAG) $(SRC)/dsd_utilities.f
+	$(FC) $(LFLAG) $(OFLAG) $(SRC)/dsd_utilities.f
 #
 $(OBJ)/mitt_time.o: $(SRC)/mitt_time.c
 	gcc -c $(OFLAG) $(SRC)/mitt_time.c
 #
 $(OBJ)/RT_ncdf_IO.o: $(SRC)/RT_ncdf_IO.F90
-	gfortran -c $(OFLAG) $(SRC)/RT_ncdf_IO.F90 -I$(INCPATH)
+	$(FC) -c $(OFLAG) $(SRC)/RT_ncdf_IO.F90 $(INCPATH) $(MPIINC) $(MPILIB)
 

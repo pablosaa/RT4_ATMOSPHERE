@@ -104,6 +104,7 @@ contains
 
   ! ----
   ! Subroutine to work with converting Date to unix-time (uses external functions)
+  ! ---
   function getUnixTime2Date(unixtime) result(datum)
     use, intrinsic :: iso_c_binding
     implicit none
@@ -409,7 +410,7 @@ function Calculate_GeopotentialZ(T, P, Qv) result(Z)
   ! ** local variables
   integer :: i, NZ
   real(kind=8), allocatable, dimension(:,:,:,:) :: MIXR, TV, del_P, TVdP !
-  real, parameter :: Rd = 287         ! [J/kg/K] dry air gass constant
+  real, parameter :: Rd = 287.0       ! [J/kg/K] dry air gass constant
   real, parameter :: g0 = 9.807       ! [m/s^2]  gravity constant
 
   MIXR = qx_to_mixr(Qv)   ! [kg/kg]
@@ -417,7 +418,7 @@ function Calculate_GeopotentialZ(T, P, Qv) result(Z)
 
   NZ = size(T, 3)
   if(size(P,3).NE.NZ+1) stop 'Layer dimension for P needs to be 1 nore than Z'
-  del_P = P(:,:,0:NZ-1,:) - P(:,:,1:NZ,:)
+  del_P = P(:,:,1:NZ,:) - P(:,:,2:NZ+1,:)
 
   ! temporal integrable variable = Tv/P *dP
   TVdP = TV*del_P/P(:,:,1:NZ,:)
@@ -427,7 +428,8 @@ function Calculate_GeopotentialZ(T, P, Qv) result(Z)
   do i = 1, NZ
      Z(:,:,i,:) = sum(TVdP(:,:,1:i,:), dim=3)
   end do
-  Z = (1E-3*Rd/g0)*Z  ! converting to [km]
+
+  Z = (1.0E-3)*Z*Rd/g0  ! converting to [km]
 
   return
 end function Calculate_GeopotentialZ
@@ -484,6 +486,45 @@ elemental function MassRatio2MassVolume(Q_x, T, P ,MIXR) result(RHO_x)
 end function MassRatio2MassVolume
 ! ----/
 
+! ---------------------------------------------------------------------
+! Converting hydrometeor variable units from kg/kg to g/m^3
+!
+subroutine Convert_Hydrometeors_units(Is_Specific_VAR)
+  !use meteo_tools, only: MassRatio2MassVolume, qx_to_mixr
+  use variables, only: temp_tmp, press_tmp, cloud_water_tmp, &
+       rain_water_tmp, cloud_ice_tmp, &
+       snow_tmp, graupel_tmp, mixr_tmp
+  implicit none
+  logical, intent(in) :: Is_Specific_VAR
+
+  if(Is_Specific_VAR) then
+     ! TRUE if variables are specific quantities and 
+     ! need to be converted to mixing rations:
+     cloud_water_tmp = qx_to_mixr(cloud_water_tmp)
+     rain_water_tmp  = qx_to_mixr(rain_water_tmp)
+     cloud_ice_tmp   = qx_to_mixr(cloud_ice_tmp)
+     snow_tmp = qx_to_mixr(snow_tmp)
+     graupel_tmp = qx_to_mixr(graupel_tmp)
+  end if
+  
+  cloud_water_tmp = 1.0E3*MassRatio2MassVolume(cloud_water_tmp, &
+       & temp_tmp(:,:,1:,:), press_tmp(:,:,1:,:), mixr_tmp )
+
+  rain_water_tmp = 1.0E3*MassRatio2MassVolume(rain_water_tmp, &
+       temp_tmp(:,:,1:,:), press_tmp(:,:,1:,:), mixr_tmp )
+
+  cloud_ice_tmp = 1.0E3*MassRatio2MassVolume(cloud_ice_tmp, &
+       temp_tmp(:,:,1:,:), press_tmp(:,:,1:,:), mixr_tmp )
+
+  snow_tmp = 1.0E3*MassRatio2MassVolume(snow_tmp, &
+       temp_tmp(:,:,1:,:), press_tmp(:,:,1:,:), mixr_tmp )
+
+  graupel_tmp = 1.0E3*MassRatio2MassVolume(graupel_tmp, &
+       temp_tmp(:,:,1:,:), press_tmp(:,:,1:,:), mixr_tmp )
+
+end subroutine Convert_Hydrometeors_units
+! -----/
+
 end module meteo_tools
 
 
@@ -524,24 +565,25 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
   real, allocatable, dimension(:) :: sigma_hybrid
   
   character(len=69), dimension(*), parameter :: arome_name = & !NVarIn
-       &[ character(len=69):: &
-       & 'air_temperature_2m', &
-       & 'surface_air_pressure', &
-       & 'specific_humidity_2m', &
-       & 'latitude', &
-       & 'longitude', &
-       & 'atmosphere_boundary_layer_thickness', &
-       & 'hybrid', &
-       & 'air_temperature_ml', &
-       & 'specific_humidity_ml', &
-       & 'mass_fraction_of_cloud_condensed_water_in_air_ml', &
-       & 'mass_fraction_of_rain_in_air_ml', &
-       & 'mass_fraction_of_cloud_ice_in_air_ml', &
-       & 'mass_fraction_of_snow_in_air_ml', &
-       & 'mass_fraction_of_graupel_in_air_ml', &
-       & 'x_wind_ml', &
-       & 'y_wind_ml', &
-       & 'time']
+       [ character(len=69):: &
+       'surface_geopotential', &
+       'air_temperature_2m', &
+       'surface_air_pressure', &
+       'specific_humidity_2m', &
+       'latitude', &
+       'longitude', &
+       'atmosphere_boundary_layer_thickness', &
+       'hybrid', &
+       'air_temperature_ml', &
+       'specific_humidity_ml', &
+       'mass_fraction_of_cloud_condensed_water_in_air_ml', &
+       'mass_fraction_of_rain_in_air_ml', &
+       'mass_fraction_of_cloud_ice_in_air_ml', &
+       'mass_fraction_of_snow_in_air_ml', &
+       'mass_fraction_of_graupel_in_air_ml', &
+       'x_wind_ml', &
+       'y_wind_ml', &
+       'time']
 
   type(ncname) :: aromename
 
@@ -579,6 +621,12 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
 
      select case(trim(arome_name(i) ))
         ! *** Reading for AROME SURFACE variables:
+     case('surface_geopotential')
+        status = nf90_get_var(ncid, VarId, hgt_tmp(:,:,0:0,:), &
+             start=(/nx_in, ny_in, 1, 1/), &
+             count=(/ngridx, ngridy, 1, ntime/) )
+        hgt_tmp(:,:,0,:) = max(1.0E-3*hgt_tmp(:,:,0,:)/9.807, 0.0)
+        
      case('air_temperature_2m')
         status = nf90_get_var(ncid, VarId, temp_tmp(:, :, 0:0, :), &
              & start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, 1, ntime/) )
@@ -669,7 +717,7 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
   mixr_tmp = qx_to_mixr(QV(:,:,1:,:))  ! [kg/kg]
   
   ! --
-  ! 4) Calculating Geopotential Altitude:
+  ! 4) Calculating Geopotential Altitude [km]:
   hgt_tmp(:,:,1:nlyr,:) = Calculate_GeopotentialZ( &
        temp_tmp(:,:,1:nlyr,:), press_tmp, QV(:, :, 1:nlyr,:) )
 
@@ -680,7 +728,7 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
 
   ! --
   ! 6) Converting Specific masses [kg/kg] to mass-volume [g/m^3]:
-  call Convert_Hydrometeors_units(.true.)
+  call Convert_Hydrometeors_units(Is_Specific_VAR=.true.)
   
   ! --
   qidx = 15
@@ -688,8 +736,7 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
 
   ! ****************************
   ! Retrieving Global Attribute:
-  status = nf90_get_att(ncid, NF90_GLOBAL, 'title', varname)
-  write(origin_str,'(A)')  trim(varname)//'->'//trim(ncfile)
+  status = nf90_get_att(ncid, NF90_GLOBAL, 'title', origin_str)
   
   ! ****************************
   ! Closing the NetCDF file
@@ -700,16 +747,16 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
 
   return
 end subroutine read_arome
-! -------------------------------------------------------------------------------------/
+! ---------------------------------------------------------------------/
 
-! ______________________________________________________________________________________
-! --------------------------------------------------------------------------------------
+! _____________________________________________________________________
+! ---------------------------------------------------------------------
 ! Subroutine to read WRF simulation outputs from NetCDF-file generated by standard
 ! WRF code.
 !
 ! The loaded variables are introduced to the RT3/RT4 radiative transfer code for
 ! calculation of Brightness Temperature Fields.
-! -------------------------------------------------------------------------------------
+! ----------------------------------------------------------------------
 subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   use netcdf
   use variables
@@ -775,7 +822,7 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
 
   ! Obtain dimensions and allocate RT variables:
   CALL get_dims_allocate_vars(ncid, wrfname)
-  
+
   ! For local variables:
   allocate(pertur_T(ngridx, ngridy, nlyr, ntime) )
   allocate(mixratio(ngridx, ngridy, 0:nlyr, ntime) )
@@ -810,8 +857,10 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
         ! *** Reading for WRF PROFILE variables:
      case('PHB')
         status = nf90_get_var(ncid, VarId, hgt_tmp, &
-             start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, 1, ntime/) )
+             start=(/nx_in, ny_in , 1, 1/), &
+             count=(/ngridx, ngridy, nlyr+1, ntime/) )
         hgt_tmp = 1.0E-3*hgt_tmp/9.81  ! [km]
+
      case('P_HYD')
         status = nf90_get_var(ncid, VarId, press_tmp(:, :, 1:nlyr, :), &
              start=(/nx_in, ny_in , 1, 1/), count=(/ngridx, ngridy, nlyr, ntime/) )
@@ -870,7 +919,7 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   ! --
   ! 5) Converting mass-ratio [kg/kg] to mass-volume [g/m^3] values:
   mixr_tmp = mixratio(:, :, 1:nlyr, :)  ! [kg/kg]
-  call Convert_Hydrometeors_units(.false.)
+  call Convert_Hydrometeors_units(Is_Specific_VAR=.false.)
 
   ! ****************************
   ! Retrieving Global Attribute:
@@ -888,18 +937,18 @@ subroutine read_wrf(ncflen, ncfile, del_xy, origin_str)
   
   return
 end subroutine read_wrf
-! ____________________________________________________________________________
-! ____________________________________________________________________________
+! _____________________________________________________________________
+! _____________________________________________________________________
 
 
-! ______________________________________________________________________________________
-! --------------------------------------------------------------------------------------
+! _____________________________________________________________________
+! ---------------------------------------------------------------------
 ! Subroutine to read Wyoming Radiosonde database from the NetCDF-file generated by the
 ! code in repository github.com/pablosaa/WyoSondes
 !
 ! The loaded variables are introduced to the RT3/RT4 radiative transfer code for
 ! calculation of Brightness Temperature Fields.
-! -------------------------------------------------------------------------------------
+! ----------------------------------------------------------------------
 subroutine read_wyosonde(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
      &press_lev,temp_lev,relhum_lev,mixr_lev, cloud_water_lev,&
      &rain_water_lev,cloud_ice_lev,snow_lev,graupel_lev, winddir_lev, windvel_lev,&
@@ -1115,11 +1164,11 @@ subroutine read_wyosonde(ncflen,ncfile,mxgridx,mxgridy,mxlyr,mxtime,hgt_lev,&
 
   return
 end subroutine read_wyosonde
-! ____________________________________________________________________________
+! _____________________________________________________________________
 
 
-! ============================================================================
-! ----------------------------------------------------------------------------
+! =====================================================================
+! ---------------------------------------------------------------------
 ! SUBROUTINE to create the RT3/4 output as NetCDF files 
 !
 ! This subroutine only creates the NetCDF file with its corresponding
@@ -1128,7 +1177,7 @@ end subroutine read_wyosonde
 ! 'storencdf' needs to be called in order to pass the FORTRAN variables
 ! to their corresponding NetCDF variables.
 !
-! ----------------------------------------------------------------------------
+! ---------------------------------------------------------------------
 !subroutine createncdf(ncflen, ncfile,NUMMU,NFREQ,NSTOKES,NLYR,XN,YN,&
 !     &LAYERS,freq_str,input_file,micro_phys,SELV,SLAT,SLON,origin_str)
 subroutine createncdf(ncflen, ncfile,NUMMU,NSTOKES,&
@@ -1138,21 +1187,19 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NSTOKES,&
   use variables, only : nelv, elevations, n_freq, nlyr, ngridx, ngridy, hgt_tmp,&
        FREQ, lat, lon, PBLH, qidx, temp_tmp, press_tmp, relhum_tmp, mixr_tmp, &
        cloud_water_tmp, rain_water_tmp, cloud_ice_tmp, snow_tmp, graupel_tmp, &
-       winddir_tmp, windvel_tmp
+       winddir_tmp, windvel_tmp, ntime
   implicit none
 
   integer, intent(in) :: ncflen
   character(len=ncflen), intent(in) :: ncfile
   character(len=*) input_file, micro_phys
   integer, intent(in) :: NUMMU, NSTOKES
-  !real(kind=8), intent(in) :: freq_str(NFREQ), LAYERS(NLYR)
-  !real(kind=4), intent(in) :: SELV(XN,YN), SLAT(XN,YN), SLON(XN,YN)
   character(len=*), intent(in) :: origin_str
   
   ! internal variables
   integer :: I, status, ncid
   integer :: nDims, mu_id, stok_id, freq_id, lyr_id, time_id, xn_id, yn_id
-  integer :: var_mu_id, var_stok_id, var_freq_id, var_lyr_id, var_time_id, var_elvid, var_latid, var_lonid
+  integer :: var_mu_id, var_stok_id, var_freq_id, var_lyr_id, var_time_id, var_elvid, var_latid, var_lonid, var_gph_id
   integer :: var_xid, var_yid, var_tbup1_id, var_tbdn1_id, var_tbup0_id, var_tbdn0_id
   integer :: var_te2_id, var_rh2_id, var_pr2_id, var_blh_id
   integer :: var_te_id, var_pr_id, var_rh_id, var_qv_id, var_qc_id
@@ -1161,12 +1208,14 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NSTOKES,&
   integer :: var_kextqg_id, var_kextqi_id, var_kextatm_id
   integer :: var_salbtot_id, var_backsct_id, var_gcoeff_id, var_qidx_id
   integer, dimension(NSTOKES) :: stokes_var
-  !real(kind=4), dimension(NTIME) :: TIMELINE
-  integer :: NANGLES !!nelv, 
+  integer :: NANGLES
+  character(len=8) :: ini_date
+  character(len=10) :: ini_time
 
   NANGLES = NUMMU + nelv
 
-  status = nf90_create(trim(ncfile),ior(NF90_CLOBBER,NF90_64BIT_OFFSET),ncid)
+  call date_and_time(DATE=ini_date, TIME=ini_time)
+  status = nf90_create(trim(ncfile), ior(NF90_CLOBBER,NF90_64BIT_OFFSET), ncid)
   if(status /= nf90_NOERR) stop 'Output NetCDF not possible to create: '  !//nf90_strerror(status) 
 
   ! Defining dimensions
@@ -1182,7 +1231,8 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NSTOKES,&
   status = nf90_def_var(ncid, "theta_z", NF90_REAL4, (/ mu_id /), var_mu_id)
   status = nf90_def_var(ncid, "freq", NF90_REAL4, (/ freq_id /), var_freq_id)
   status = nf90_def_var(ncid, "stokes", NF90_INT, (/ stok_id /), var_stok_id)
-  status = nf90_def_var(ncid, "layer", NF90_REAL, (/xn_id, yn_id, lyr_id/), var_lyr_id)
+  status = nf90_def_var(ncid, "layer", NF90_REAL4, (/lyr_id/), var_lyr_id)
+  status = nf90_def_var(ncid, "GPH", NF90_REAL, (/xn_id, yn_id, lyr_id, time_id/), var_gph_id)
   status = nf90_def_var(ncid, "time", NF90_REAL, (/ time_id /), var_time_id)
   status = nf90_def_var(ncid, "TB_UP_TOA", NF90_REAL4, (/ mu_id, freq_id, stok_id, xn_id, yn_id, time_id /), var_tbup1_id)
   status = nf90_def_var(ncid, "TB_UP_GRD", NF90_REAL4, (/ mu_id, freq_id, stok_id, xn_id, yn_id, time_id /), var_tbup0_id)
@@ -1255,9 +1305,9 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NSTOKES,&
 
   status = nf90_def_var(ncid, "elevation", NF90_REAL4, (/xn_id, yn_id/), var_elvid)
   status = nf90_def_var_deflate(ncid, var_elvid, 0, 1, 9)
-  status = nf90_def_var(ncid, "latitude", NF90_REAL4, (/xn_id, yn_id/), var_latid)
+  status = nf90_def_var(ncid, "lat", NF90_REAL4, (/xn_id, yn_id/), var_latid)
   status = nf90_def_var_deflate(ncid, var_latid, 0, 1, 9)
-  status = nf90_def_var(ncid, "longitude", NF90_REAL4, (/xn_id, yn_id/), var_lonid)
+  status = nf90_def_var(ncid, "lon", NF90_REAL4, (/xn_id, yn_id/), var_lonid)
   status = nf90_def_var_deflate(ncid, var_lonid, 0, 1, 9)
 
   ! ***********************************************
@@ -1273,10 +1323,16 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NSTOKES,&
   status = nf90_put_att(ncid, var_stok_id, "long_name","Stokes_vector")
   status = nf90_put_att(ncid, var_stok_id, "units","1")
 
-  status = nf90_put_att(ncid, var_lyr_id, "short_name","layer")
-  status = nf90_put_att(ncid, var_lyr_id, "long_name","profile layer height")
+  status = nf90_put_att(ncid, var_lyr_id, "short_name","Layers")
+  status = nf90_put_att(ncid, var_lyr_id, "long_name"," Layer height at center grid")
   status = nf90_put_att(ncid, var_lyr_id, "units","km")
   status = nf90_put_att(ncid, var_lyr_id, "_FillValue", -999.9)
+  status = nf90_put_att(ncid, var_lyr_id, "Note", "For reference only")
+
+  status = nf90_put_att(ncid, var_gph_id, "short_name","h.a.g.l")
+  status = nf90_put_att(ncid, var_gph_id, "long_name","Geopotential height")
+  status = nf90_put_att(ncid, var_gph_id, "units","km")
+  status = nf90_put_att(ncid, var_gph_id, "_FillValue", -999.9)
 
   status = nf90_put_att(ncid, var_freq_id, "short_name","freq")
   status = nf90_put_att(ncid, var_freq_id, "long_name","Radiometric frequency")
@@ -1444,23 +1500,27 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NSTOKES,&
   !status = nf90_put_att(ncid, var_yid, "long_name", "Y_grid")
 
   status = nf90_put_att(ncid, var_elvid, "short_name", "ELV")
-  status = nf90_put_att(ncid, var_elvid, "long_name", "Elevation")
+  status = nf90_put_att(ncid, var_elvid, "long_name", "Elevation a.s.l.")
   status = nf90_put_att(ncid, var_elvid, "units", "km")
 
   status = nf90_put_att(ncid, var_latid, "short_name", "LAT")
   status = nf90_put_att(ncid, var_latid, "long_name", "Latitude")
-  status = nf90_put_att(ncid, var_latid, "units", "DEG")
+  status = nf90_put_att(ncid, var_latid, "units", "degree_north")
   
   status = nf90_put_att(ncid, var_lonid, "short_name", "LON")
   status = nf90_put_att(ncid, var_lonid, "long_name", "Longitude")
-  status = nf90_put_att(ncid, var_lonid, "units", "DEG")
+  status = nf90_put_att(ncid, var_lonid, "units", "degree_east")
 
   status = nf90_put_att(ncid,NF90_GLOBAL,"Input_data", input_file)
-  status = nf90_put_att(ncid,NF90_GLOBAL,"Origine Information", trim(origin_str))
+  status = nf90_put_att(ncid,NF90_GLOBAL,"Origin_Information", trim(origin_str))
   status = nf90_put_att(ncid,NF90_GLOBAL,"Hydrometeor_Microphysics", micro_phys)
   status = nf90_put_att(ncid,NF90_GLOBAL,"Contact","Pablo.Saavedra@uib.no")
   status = nf90_put_att(ncid,NF90_GLOBAL,"Institution","Geophysical Institute, University of Bergen")
   status = nf90_put_att(ncid,NF90_GLOBAL,"License","CC-BY-SA")
+
+  ! writting Initial date as global variable:
+  status = nf90_put_att(ncid,NF90_GLOBAL,"Start_Time", &
+       ini_date//' '//ini_time )
   ! ********** End definitions *****************************
   status = nf90_enddef(ncid)
   ! ********************************************************
@@ -1472,15 +1532,20 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NSTOKES,&
   ! Putting variables independent of time:
   stokes_var = (/(I,I=1,NSTOKES)/)
   !TIMELINE = -999.9
-  status = nf90_put_var(ncid, var_lyr_id, hgt_tmp(:,:,1:nlyr,1) )
+  status = nf90_put_var(ncid, var_lyr_id, &
+       sum(hgt_tmp(int(ngridx/2),int(ngridy/2),1:nlyr,:), dim=2)/ntime )
   status = nf90_put_var(ncid, var_freq_id, FREQ)
   status = nf90_put_var(ncid, var_stok_id, stokes_var)
   !status = nf90_put_var(ncid, var_time_id, TIMELINE)
-  status = nf90_put_var(ncid, var_elvid, real(hgt_tmp(:,:,0,1),4) )
+  status = nf90_put_var(ncid, var_elvid, real(hgt_tmp(:,:,0:0,1:1), 4) )
   status = nf90_put_var(ncid, var_latid, lat)
   status = nf90_put_var(ncid, var_lonid, lon)
 
   ! ********** Writting Station level Variables ****************************
+  ! Geopotential Height
+  status = nf90_put_var(ncid, var_gph_id, hgt_tmp(:,:,1:nlyr,:) )
+  call check_nc(status, 'Geopotential cannot be written!', .true.)
+  
   ! Writting the 2m Temperature
   status = nf90_put_var(ncid, var_te2_id, temp_tmp(:,:,0:0,:) )
   call check_nc(status, 'T2m variable cannot be written!', .true.)
@@ -1542,16 +1607,17 @@ subroutine createncdf(ncflen, ncfile,NUMMU,NSTOKES,&
   call check_nc(status, 'Error closing after creation NetCDF', .true.)
 
 end subroutine createncdf
-! ___________________________________________________________________________
+! _____________________________________________________________________
 
 
-! ____________________________________________________________________________
-! ----------------------------------------------------------------------------
+! _____________________________________________________________________
+! ---------------------------------------------------------------------
 ! SUBROUTINE to store the RT3/4 data in the created NetCDF output file
 !
-! ----------------------------------------------------------------------------
+! ---------------------------------------------------------------------
 subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,time_len)
   use netcdf
+  !use mpi
   use variables, only : nx_in, nx_fin, ny_in, ny_fin, timeidx, nx, ny, UnixTime
   use nctoys
   use meteo_tools, only : interp1_1D
@@ -1563,18 +1629,16 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   ! internal variables
   integer :: i, j, k
   integer :: status, ncid, VarId, idx, idf
-  integer :: nDims, unlimdimid, freq_id
+  integer :: nDims, unlimdimid
   character(len=len(OUT_FILE)+3) :: ncfile
   character(len=40) :: dim_name
-  integer :: x_grid, y_grid, i_freq, freq_len, NTIME
-  real(kind=8) :: AllFreq(30)
+  integer :: x_grid, y_grid, i_freq, NTIME
   real(kind=8), allocatable, dimension(:) :: ZENITH_THTA  ! (NUMMU)
   real(kind=8), allocatable, dimension(:,:,:,:) :: TB_THTA
   real(kind=8), allocatable, dimension(:) :: elevations, elvmu
-  !!real(kind=8) :: TIMELINE
-  integer :: date(6)
   real(kind=8), parameter :: PI = 4.0*atan(1.0)
   integer :: nelv, NANG
+  integer :: err
   
   ! Extracting information from the OUT_FILE character string:
   ! * The OUT_FILE has the form like:
@@ -1583,6 +1647,9 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   ! which needs to be transformed to a NetCDF file like:
   ! ../output/TB/RT3TB_Exp7.6MaxGa0.2Exp4.0MaxGaExp8.0_f27.2.nc
 
+  !call MPI_Comm_size(MPI_COMM_WORLD, numprocs, err)
+  !call MPI_Comm_rank(MPI_COMM_WORLD, rank, err)
+
   ! * grid indices:
   idx = scan(OUT_FILE,'x',back=.true.)+1
   if(idx.eq.1) stop 'no x000_ found in string passed'
@@ -1590,9 +1657,6 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   read(OUT_FILE(idx:),'(I03XI03)') x_grid, y_grid
   if(x_grid.NE.nx.OR.y_grid.NE.ny) stop 'ERROR passing x_grid or y_grid in storecdf'
   
-  ! * Date and * getting microphysics from OUT_FILE:
-  date = getUnixTime(UnixTime(time_len) )
-
   !! idx = scan(OUT_FILE,'=',back=.true.)+1
   !! if(idx.eq.1) stop 'no separator = found in string passed'
   !! idf = scan(OUT_FILE,'x',back=.true.)
@@ -1604,8 +1668,10 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   idf = scan(OUT_FILE,'=',back=.true.)-1
   ncfile = OUT_FILE(:idf)
 
-  status = NF90_OPEN(ncfile,MODE=NF90_WRITE,NCID=ncid)
-  if(status/=NF90_NOERR) stop 'Opening the NetCDF to add in STORENCDF()'
+  status = NF90_OPEN(ncfile,MODE=IOR(NF90_WRITE,NF90_NETCDF4),NCID=ncid)
+  !!!status = NF90_OPEN_PAR(ncfile, IOR(IOR(NF90_WRITE, NF90_NETCDF4), &
+  !!!     NF90_MPIIO), MPI_COMM_WORLD, MPI_INFO_NULL, ncid)
+  call check_nc(status, 'STORENCDF() Opening the NetCDF', .true.)
 
   ! Getting NetCDF file dimensions and lengths:
   ! For time:
@@ -1618,18 +1684,11 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   idx = scan(OUT_FILE,'f',back=.true.)+1
   read(OUT_FILE(idx:),'(I6)') i_freq
 
-  AllFreq = -999.
-  status = nf90_inq_varid(ncid,"freq",freq_id)
-  status = nf90_inquire_dimension(ncid,freq_id,dim_name,freq_len)
-  status = nf90_get_var(ncid,freq_id,AllFreq(1:freq_len))
-
   if(i_freq.LT.1) stop 'ERROR finding frequency index in STORENCDF'
-  print*, 'Date, UXTIME, x-grid, y-grid, freq dim has: ',date, UnixTime(time_len), &
-       x_grid, y_grid, AllFreq(i_freq)
   
   ! Writting variable values ZENITH_THTA into NetCDF file:
   status = nf90_inq_varid(ncid, "theta_z", VarId)
-  if(status /= nf90_NoErr)  stop 'cos(MU) ID cannot be assigned!'
+  call check_nc(status, 'cos(MU) ID cannot be assigned!')
   status = nf90_inquire_dimension(ncid,VarId,dim_name,NANG)
   status = nf90_get_att(ncid,VarID,"N_obs_angles",nelv)
 
@@ -1638,7 +1697,7 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   allocate(elevations(nelv))
   allocate(elvmu(nelv))
 
-  status = nf90_get_att(ncid,VarId,"Obs_angles_degree",elevations)
+  status = nf90_get_att(ncid, VarId, "Obs_angles_degree", elevations)
   
   ! converting input MWR elevation angles into zenithal angles cos(pi/2-mu)
   elvmu = cos((90.0-elevations)*PI/180.)
@@ -1656,167 +1715,199 @@ subroutine storencdf(OUT_FILE,MU_VALUES,NUMMU,HEIGHT,NOUTLEVELS,OUTVAR,NSTOKES,t
   if(time_len.EQ.1.AND.i_freq.EQ.1) then
      ! converting cos(mu) to zenithal angle:
      ZENITH_THTA = acos(ZENITH_THTA)*180.0/PI
+     status = nf90_var_par_access(ncid, VarId, NF90_INDEPENDENT)
      status = nf90_put_var(ncid,VarId,ZENITH_THTA(:NANG))
      call check_nc(status, 'cos(MU) values cannot be stored!', .true.)
 
-
-     ! writting Initial date as global variable:
-     status = nf90_redef(ncid)
-     status = nf90_put_att(ncid,NF90_GLOBAL,"Start_Date", date ) !OUT_FILE(19:26))
-     status = nf90_enddef(ncid)
-
   end if
-  
-  if(time_len.EQ.NTIME.AND.i_freq.EQ.freq_len) then
-     ! writting Initial date as global variable:
-     status = nf90_redef(ncid)
-     status = nf90_put_att(ncid,NF90_GLOBAL,"End_Date", date ) !OUT_FILE(19:26))  ! (16:23)
-     status = nf90_enddef(ncid)
-  end if
-  
+    
   ! writing time
   ! writting TB_UPwelling
   status = nf90_inq_varid(ncid, "time", VarId)
   call check_nc(status, 'Time cannot be assigned!', .true.)
+  status = nf90_var_par_access(ncid, VarId, NF90_INDEPENDENT)
   status = nf90_put_var(ncid,VarId, UnixTime(time_len), start=(/time_len/))
   call check_nc(status, 'Time values cannot be stored!', .true.)
 
-  ! writting TOA TB_UPwelling ( OUTVAR has the dimension of [mu,stokes,Xwelling,level]) 
+  ! writting TOA TB_UPwelling
+  ! OUTVAR has the dimension of [mu,stokes,Down/Up-welling, Obs_level]
   status = nf90_inq_varid(ncid, "TB_UP_TOA", VarId)
   call check_nc(status, 'TB_UP TOA cannot be assigned!', .true.)
-  status = nf90_put_var(ncid,VarId,TB_THTA(:NANG,:,1,1),start=(/1,i_freq,1,x_grid,y_grid,time_len/),count=(/NANG,1,2,1,1,1/))
-  !status = nf90_put_var(ncid,VarId,OUTVAR(:,:,1,:),start=(/1,1,1,x_grid,y_grid,time_len/),count=(/NUMMU,2,NOUTLEVELS,1,1,1/))
+
+  status = nf90_var_par_access(ncid, VarId, NF90_INDEPENDENT)
+  call check_nc(status, 'TB_UP TOA cannot set collective mode')
+
+  status = nf90_put_var(ncid, VarId, TB_THTA(:NANG,:,1:1,1:1), &
+       start=(/1,i_freq,1,x_grid,y_grid,time_len/), &
+       count=(/NANG,1,2,1,1,1/) )
   call check_nc(status, 'TB_UP TOA values cannot be stored!', .true.)
   
   ! writting TOA TB_DOWNwelling
   status = nf90_inq_varid(ncid, "TB_DN_TOA", VarId)
   call check_nc(status, 'TB_DN TOA cannot be assigned!', .true.)
-  !status = nf90_put_var(ncid,VarId,OUTVAR(:,:,2,:),start=(/1,1,1,time_len/),count=(/NUMMU,2,NOUTLEVELS,1/))
-  status = nf90_put_var(ncid,VarId,TB_THTA(:NANG,:,2,1),start=(/1,i_freq,1,x_grid,y_grid,time_len/),count=(/NANG,1,2,1,1,1/))
+
+  status = nf90_var_par_access(ncid, VarId, NF90_INDEPENDENT)
+  call check_nc(status, 'TB_DN TOA cannot set collective mode')
+
+  status = nf90_put_var(ncid, VarId, TB_THTA(:NANG,:,2:2,1:1), &
+       start=(/1,i_freq,1,x_grid,y_grid,time_len/), &
+       count=(/NANG,1,2,1,1,1/))
   call check_nc(status, 'TB_DN TOA values cannot be stored!', .true.)
   
-  ! writting GROUND TB_UPwelling ( OUTVAR has the dimension of [mu,stokes,Xwelling,level]) 
+  ! writting GROUND TB_UPwelling
+  ! OUTVAR has the dimension [mu,stokes,Down/Up-welling,Obs_level]) 
   status = nf90_inq_varid(ncid, "TB_UP_GRD", VarId)
   call check_nc(status, 'TB_UP GRD cannot be assigned!', .true.)
-  status = nf90_put_var(ncid,VarId,TB_THTA(:NANG,:,1,2),start=(/1,i_freq,1,x_grid,y_grid,time_len/),count=(/NANG,1,2,1,1,1/))
-  !status = nf90_put_var(ncid,VarId,OUTVAR(:,:,1,:),start=(/1,1,1,x_grid,y_grid,time_len/),count=(/NUMMU,2,NOUTLEVELS,1,1,1/))
+
+  status = nf90_var_par_access(ncid, VarId, NF90_INDEPENDENT)
+  call check_nc(status, 'TB_UP GRD cannot set collective mode')
+
+  status = nf90_put_var(ncid, VarId, TB_THTA(:NANG,:,1:1,2:2), &
+       start=(/1,i_freq,1,x_grid,y_grid,time_len/), &
+       count=(/NANG,1,2,1,1,1/))
   call check_nc(status, 'TB_UP GRD values cannot be stored!', .true.)
   
   ! writting GROUND TB_DOWNwelling
   status = nf90_inq_varid(ncid, "TB_DN_GRD", VarId)
   call check_nc(status, 'TB_DN GRD cannot be assigned!', .true.)
-  !status = nf90_put_var(ncid,VarId,OUTVAR(:,:,2,:),start=(/1,1,1,time_len/),count=(/NUMMU,2,NOUTLEVELS,1/))
-  status = nf90_put_var(ncid, VarId, TB_THTA(:NANG,:, 2, 2), &
+
+  status = nf90_var_par_access(ncid, VarId, NF90_INDEPENDENT)
+  call check_nc(status, 'TB_DN GRD cannot set collective mode')
+
+  status = nf90_put_var(ncid, VarId, TB_THTA(:NANG,:, 2:2, 2:2), &
        start=(/1, i_freq, 1, x_grid, y_grid, time_len/), &
        count=(/NANG, 1, 2, 1, 1, 1/))
   call check_nc(status, 'TB_DN GRD values cannot be stored!', .true.)
     
-  
   status = NF90_CLOSE(ncid)
-  call check_nc(status, 'Closing NetCDF (storencdf) not possible!', .true.)
-     
+  call check_nc(status, 'Closing (storencdf) not possible!', .true.)
+
+
   if(allocated(ZENITH_THTA)) deallocate(ZENITH_THTA)
   if(allocated(TB_THTA)) deallocate(TB_THTA)
   if(allocated(elevations)) deallocate(elevations)
   if(allocated(elvmu)) deallocate(elvmu)
 
+  
   return
   
 end subroutine storencdf
-!  if(status /= NF90_NoErr) stop 'Creating the NetCDF to write!'
+! ----/
 
-
-! ____________________________________________________________________________
-! ----------------------------------------------------------------------------
+! _____________________________________________________________________
+! ---------------------------------------------------------------------
 ! SUBROUTINE Microphysics variable storege for the RT3/4 NetCDF output file
 !
 subroutine MP_storencdf(OUT_FILE, time_len, i_freq)
   use netcdf
   use nctoys, only : check_nc
-  use variables, only : ngridx, ngridy, nx, ny, nlyr, kextcloud, KEXTATMO, &
+  use variables, only : ngridx, ngridy, nx, ny, nlyr, &
+       ntime, n_freq, kextcloud, KEXTATMO, &
        kextrain, kextice, kextsnow, kextgraupel, &
-       salbtot, back, g_coeff
+       salbtot, back, g_coeff, FREQ
   
   implicit none
 
   character(len=*), intent(in) :: OUT_FILE
   integer, intent(in) :: time_len, i_freq
+
   ! internal variables
   integer :: status, ncid, VarId
-  integer :: nDims, unlimdimid, freq_id
+  integer :: nDims, unlimdimid
   character(len=len(OUT_FILE)+3) :: ncfile
+  character(len=8) :: end_date
+  character(len=10) :: end_time
 
   ncfile = OUT_FILE
-  status = NF90_OPEN(ncfile, MODE=NF90_WRITE, NCID=ncid)
-  if(status/=NF90_NOERR) stop 'Opening the NetCDF to add'
+  !status = NF90_OPEN_PAR(ncfile, IOR(IOR(NF90_WRITE, NF90_NETCDF4), &
+  !     NF90_MPIIO), MPI_COMM_WORLD, MPI_INFO_NULL, ncid)
+  status = NF90_OPEN(ncfile, IOR(NF90_WRITE, NF90_NETCDF4), ncid)
+  call check_nc(status, 'MP_STORENCDF() Opening the NetCDF', .true.)
 
   ! Getting NetCDF file dimensions and lengths:
-
   ! For frequency:
   if(i_freq.LT.1) stop 'ERROR: finding the frequency index in NP_STORENCDF'
 
   ! ---------------------------------------
   ! Writting the ATMOSPHERIC Extintion coeff
   status = nf90_inq_varid(ncid, "kext_atm", VarId)
-  if(status /= nf90_NoErr) stop 'KEXT_ATMOS variable ID cannot be read!'
+  call check_nc(status, 'KEXT_ATMOS  ID cannot be read!', .true.)
+  !status = nf90_var_par_access(ncid, VarId, NF90_INDEPENDENT)
   status = nf90_put_var(ncid, VarId, KEXTATMO, start=(/1, 1, 1, i_freq, time_len/) )
-  if(status /= nf90_NoErr) stop 'KEXT_ATMOS cannot be written!'
+  call check_nc(status, 'KEXT_ATMOS cannot be written!', .true.)
   
   ! Writting the Cloud Extintion coeff
   status = nf90_inq_varid(ncid, "kext_qc", VarId)
-  if(status /= nf90_NoErr) stop 'KEXT_CLOUD variable ID cannot be read!'
+  call check_nc(status, 'KEXT_CLOUD ID cannot be read!', .true.)
+  !status = nf90_var_par_access(ncid, VarId, NF90_INDEPENDENT)
   status = nf90_put_var(ncid, VarId, kextcloud, start=(/1, 1, 1, i_freq, time_len/) )
-  if(status /= nf90_NoErr) stop 'KEXT_CLOUD cannot be written!'
+  call check_nc(status, 'KEXT_CLOUD cannot be written!', .true.)
 
   ! Writting the Rain Extintion coeff
   status = nf90_inq_varid(ncid, "kext_qr", VarId)
-  if(status /= nf90_NoErr) stop 'KEXT_RAIN variable ID cannot be read!'
+  call check_nc(status, 'KEXT_RAIN ID cannot be read!', .true.)
+  !status = nf90_var_par_access(ncid, VarId, NF90_INDEPENDENT)
   status = nf90_put_var(ncid, VarId, kextrain, start=(/1, 1, 1, i_freq, time_len/) )
-  if(status /= nf90_NoErr) stop 'KEXT_RAIN cannot be written!'
+  call check_nc(status, 'KEXT_RAIN cannot be written!', .true.)
 
   ! Writting the ICE Extintion coeff
   status = nf90_inq_varid(ncid, "kext_qi", VarId)
-  if(status /= nf90_NoErr) stop 'KEXT_ICE variable ID cannot be read!'
+  call check_nc(status, 'KEXT_ICE ID cannot be read!', .true.)
+  !status = nf90_var_par_access(ncid, VarId, NF90_INDEPENDENT)
   status = nf90_put_var(ncid, VarId, kextice, start=(/1, 1, 1, i_freq, time_len/) )
-  if(status /= nf90_NoErr) stop 'KEXT_ICE cannot be written!'
+  call check_nc(status, 'KEXT_ICE cannot be written!', .true.)
 
   ! Writting the SNOW Extintion coeff
   status = nf90_inq_varid(ncid, "kext_qs", VarId)
-  if(status /= nf90_NoErr) stop 'KEXT_SNOW variable ID cannot be read!'
+  call check_nc(status, 'KEXT_SNOW ID cannot be read!', .true.)
+  !status = nf90_var_par_access(ncid, VarId, NF90_INDEPENDENT)
   status = nf90_put_var(ncid, VarId, kextsnow, start=(/1, 1, 1, i_freq, time_len/) )
-  if(status /= nf90_NoErr) stop 'KEXT_SNOW cannot be written!'
+  call check_nc(status, 'KEXT_SNOW cannot be written!', .true.)
 
   ! Writting the GRAUPEL Extintion coeff
   status = nf90_inq_varid(ncid, "kext_qg", VarId)
-  if(status /= nf90_NoErr) stop 'KEXT_GRAUPEL variable ID cannot be read!'
+  call check_nc(status, 'KEXT_GRAUPEL ID cannot be read!', .true.)
+  !status = nf90_var_par_access(ncid, VarId, NF90_INDEPENDENT)
   status = nf90_put_var(ncid, VarId, kextgraupel, start=(/1, 1, 1, i_freq, time_len/) )
-  if(status /= nf90_NoErr) stop 'KEXT_GRAUPEL cannot be written!'
+  call check_nc(status, 'KEXT_GRAUPEL cannot be written!', .true.)
 
   ! Writting the Total Albedo coeff
   status = nf90_inq_varid(ncid, "alb_tot", VarId)
-  if(status /= nf90_NoErr) stop 'TOTAL Albedo variable ID cannot be read!'
+  call check_nc(status, 'TOTAL Albedo ID cannot be read!', .true.)
+  !status = nf90_var_par_access(ncid, VarId, NF90_INDEPENDENT)
   status = nf90_put_var(ncid, VarId, salbtot, start=(/1, 1, 1, i_freq, time_len/) )
-  if(status /= nf90_NoErr) stop 'TOTAL  ALBEDO cannot be written!'
+  call check_nc(status, 'TOTAL  ALBEDO cannot be written!', .true.)
 
   ! Writting the Backscattering coeff
   status = nf90_inq_varid(ncid, "back_scatt", VarId)
-  if(status /= nf90_NoErr) stop 'Backscattering variable ID cannot be read!'
+  call check_nc(status, 'Backscatter ID cannot be read!', .true.)
+  !status = nf90_var_par_access(ncid, VarId, NF90_INDEPENDENT)
   status = nf90_put_var(ncid, VarId, back, start=(/1, 1, 1, i_freq, time_len/) )
-  if(status /= nf90_NoErr) stop 'Backscattering cannot be written!'
+  call check_nc(status, 'Backscattering cannot be written!', .true.)
 
   ! Writting the asymetry factor
   status = nf90_inq_varid(ncid, "g_coeff", VarId)
-  if(status /= nf90_NoErr) stop 'G-factor variable ID cannot be read!'
+  call check_nc(status, 'G-factor ID cannot be read!', .true.)
+  !status = nf90_var_par_access(ncid, VarId, NF90_INDEPENDENT)
   status = nf90_put_var(ncid, VarId, g_coeff, start=(/1, 1, 1, i_freq, time_len/) )
-  if(status /= nf90_NoErr) stop 'G-factor cannot be written!'
-  
+  call check_nc(status, 'G-factor cannot be written!', .true.)
+
+  if(time_len.EQ.NTIME.AND.i_freq.EQ.n_freq) then
+     ! writting Initial date as global variable:
+     call date_and_time(DATE=end_date, TIME=end_time)
+     status = nf90_redef(ncid)
+     status = nf90_put_att(ncid,NF90_GLOBAL,"End_Time", &
+          end_date//' '//end_time )
+     status = nf90_enddef(ncid)
+  end if
+
   status = NF90_CLOSE(ncid)
-  if (status /= NF90_NOERR) stop 'Closing NetCDF was not possible!'
+  call check_nc(status, 'Closing NetCDF was not possible!', .true.)
   return
 end subroutine MP_storencdf
-! _____________________________________________________________________________________
+! __________________________________________________________________/
 
-! _____________________________________________________________________________________
+! _____________________________________________________________________
 ! Subroutine to allocate/deallocate global variables
 subroutine allocate_RT3_variables
   use variables
@@ -1859,47 +1950,54 @@ subroutine allocate_RT3_variables
   return
 end subroutine allocate_RT3_variables
 
+
+
 ! ---------------------------------------------------------------------
-! Converting hydrometeor variable units from kg/kg to g/m^3
-!
-subroutine Convert_Hydrometeors_units(MASK)
-  use meteo_tools, only: MassRatio2MassVolume, qx_to_mixr
-  use variables, only: temp_tmp, press_tmp, cloud_water_tmp, &
-       rain_water_tmp, cloud_ice_tmp, &
-       snow_tmp, graupel_tmp, mixr_tmp
+subroutine Broadcast_variables(error)
+  use variables
+  use mpi
   implicit none
-  logical, intent(in) :: MASK
+      
+  integer, intent(out) :: error
+  integer :: rank, err=0
 
-  if(MASK) then
-     ! TRUE if variables are specific quantities and 
-     ! need to be converted to mixing rations:
-     cloud_water_tmp = qx_to_mixr(cloud_water_tmp)
-     rain_water_tmp  = qx_to_mixr(rain_water_tmp)
-     cloud_ice_tmp   = qx_to_mixr(cloud_ice_tmp)
-     snow_tmp = qx_to_mixr(snow_tmp)
-     graupel_tmp = qx_to_mixr(graupel_tmp)
+  call MPI_Comm_rank(MPI_COMM_WORLD, rank, err)
+ 
+  ! Broadcasting first the dimensions:
+  call MPI_BCast(ngridx, 1, MPI_INTEGER, 0,MPI_COMM_WORLD, err)
+  call MPI_BCast(ngridy, 1, MPI_INTEGER, 0,MPI_COMM_WORLD, err)
+  call MPI_BCast(nlyr, 1, MPI_INTEGER, 0,MPI_COMM_WORLD, err)
+  call MPI_BCast(ntime, 1, MPI_INTEGER, 0,MPI_COMM_WORLD, err) 
+  if(rank.GT.0) then
+     call allocate_RT3_variables
   end if
-  
-  cloud_water_tmp = 1.0E3*MassRatio2MassVolume(cloud_water_tmp, &
-       & temp_tmp(:,:,1:,:), press_tmp(:,:,1:,:), mixr_tmp )
 
-  rain_water_tmp = 1.0E3*MassRatio2MassVolume(rain_water_tmp, &
-       temp_tmp(:,:,1:,:), press_tmp(:,:,1:,:), mixr_tmp )
+  ! After Allocating variables, broadcast them:
+  call MPI_Bcast(hgt_tmp, size(hgt_tmp), MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, err)
+  call MPI_Bcast(temp_tmp, size(temp_tmp), MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, err)
+  call MPI_Bcast(press_tmp, size(press_tmp), MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, err)
+  call MPI_Bcast(relhum_tmp, size(relhum_tmp), MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, err)
+  call MPI_Bcast(mixr_tmp, size(mixr_tmp), MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, err)
+  call MPI_Bcast(cloud_water_tmp, size(cloud_water_tmp), MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, err)
+  call MPI_Bcast(rain_water_tmp, size(rain_water_tmp), MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, err)
+  call MPI_Bcast(cloud_ice_tmp, size(cloud_ice_tmp), MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, err)
+  call MPI_Bcast(snow_tmp, size(snow_tmp), MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, err)
+  call MPI_Bcast(graupel_tmp, size(graupel_tmp), MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, err)
+  call MPI_Bcast(windvel_tmp, size(windvel_tmp), MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, err)
+  call MPI_Bcast(winddir_tmp, size(winddir_tmp), MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, err)
+  call MPI_Bcast(lat, size(lat), MPI_REAL, 0, MPI_COMM_WORLD, err)
+  call MPI_Bcast(lon, size(lon), MPI_REAL, 0, MPI_COMM_WORLD, err)
+  call MPI_Bcast(qidx, size(qidx), MPI_INTEGER, 0, MPI_COMM_WORLD, err)
+  call MPI_Bcast(UnixTime, size(UnixTime), MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, err)
+  call MPI_Bcast(PBLH, size(PBLH), MPI_REAL, 0, MPI_COMM_WORLD, err)
 
-  cloud_ice_tmp = 1.0E3*MassRatio2MassVolume(cloud_ice_tmp, &
-       temp_tmp(:,:,1:,:), press_tmp(:,:,1:,:), mixr_tmp )
-
-  snow_tmp = 1.0E3*MassRatio2MassVolume(snow_tmp, &
-       temp_tmp(:,:,1:,:), press_tmp(:,:,1:,:), mixr_tmp )
-
-  graupel_tmp = 1.0E3*MassRatio2MassVolume(graupel_tmp, &
-       temp_tmp(:,:,1:,:), press_tmp(:,:,1:,:), mixr_tmp )
-
-end subroutine Convert_Hydrometeors_units
-! -----/
+  error = err
+  return
+end subroutine Broadcast_variables
 
 
-! ----------------------------------------------------------------------------
+
+
 !!$subroutine MP_storencdf(OUT_FILE,time_len,i_freq,y_grid,x_grid,NLYR,LAYERS,TEMP,PRESS,RH,QV,QC,&
 !!$     &WD, WS, KEXTQC, KEXTATM, KEXTTOT, ALBEDO, BACKSCATT, GCOEFF)
 !!$

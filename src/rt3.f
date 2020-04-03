@@ -273,7 +273,7 @@ C       write(*,*)'read layers,now calling RT',shape(UP_RAD), UP_RAD(1:5) ! PSG:
      .                    NOUTLEVELS, OUTLEVELS,
      .                    MU_VALUES, UP_FLUX, DOWN_FLUX,
      .                    UP_RAD, DOWN_RAD)
-       
+
       !write(*,*)'RT done',shape(UP_RAD) ! PSG: *=27
       !open(unit=33,file='pippo2.m',status='unknown')
 C      !write(33,*) 'kk=[',UP_RAD,'];'  ! PSG: still to be tested
@@ -453,7 +453,7 @@ C                 scattering file for the layers
           ENDIF
       GOTO 100
 110   CONTINUE
-      CLOSE(1)
+      CLOSE(1, status='DELETE')  ! PSG: added-> status='DELETE'
       NUM_LAYERS = I - 2
       RETURN
 
@@ -621,7 +621,7 @@ C                 scattering file for the layers
       GROUND_NAME = 'LAMBERTIAN'
       IF (GROUND_TYPE .EQ. 'F')  GROUND_NAME = 'FRESNEL'
 C      write(*,*) 'inside output_file ',shape(UP_RAD),UP_RAD  ! PSG: still to be tested
-C     ! PSG: following IF block to about ASCII storage then ITIME>0
+C     ! PSG: following IF block to avoid ASCII storage when ITIME>0
       IF(ITIME.LT.1) THEN
          OPEN (UNIT=3, FILE=OUT_FILE, STATUS='UNKNOWN')
 
@@ -670,7 +670,7 @@ C     Output the parameters
             WRITE (3,'(A)') 
      .           'C    Z      PHI     MU    FLUX/RADIANCE (I,Q,U,V)'
          ENDIF
-      ENDIF  ! PSG: end of ITIME<1
+      ENDIF  ! PSG: end of ASCII storage (ITIME<1)
 
       DO L = 1, NOUTLEVELS
          LI = OUTLEVELS(L)
@@ -703,12 +703,12 @@ C     Output upwelling radiance: -1 < mu < 0
                      ENDIF
                   ENDDO
                   OUTVAR(J,I,1,L) = OUT(I) ! PSG: variable to store NetCDF
+
                ENDDO
                IF(ITIME.LT.1) THEN
                   WRITE (3,FORM1) HEIGHT(LI), PHID, -MU_VALUES(J),
      $                 (OUT(I),I=1,NSTOKES)
                ENDIF
-C               OUTVAR(J,2,1,L) = OUT(2) ! PSG: variable to store NetCDF
             ENDDO
 C     Output downwelling radiance: 0 < mu < 1
             DO J = 1, NUMMU
@@ -722,6 +722,7 @@ C     Output downwelling radiance: 0 < mu < 1
                      ENDIF
                   ENDDO
                   OUTVAR(J,I,2,L) = OUT(I) ! PSG: variable to store NetCDF
+
                ENDDO
                IF(ITIME.LT.1) THEN
                   WRITE (3,FORM1) HEIGHT(LI), PHID,  MU_VALUES(J),
@@ -734,7 +735,8 @@ C     Output downwelling radiance: 0 < mu < 1
       ! PSG: following IF to close ASCII file when ITIME<1
       IF(ITIME.LT.1) CLOSE (3)
 
-C     PSG: Calling subroutine to store calculation into NetCDF file:      
+C     PSG: Calling subroutine to store calculation into NetCDF file:
+
       CALL STORENCDF(OUT_FILE, MU_VALUES, NUMMU,
      $     HEIGHT(OUTLEVELS(:NOUTLEVELS)),
      $     NOUTLEVELS, OUTVAR, NSTOKES, ITIME)

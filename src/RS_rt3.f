@@ -62,10 +62,11 @@ C     * parallerism support via OpenMP (beta-version)
 C     +-------+---------+---------+---------+---------+---------+---------+-+
 C+----------------------------------------------------------------------
 C                    **  RADTRAN I/O SPECIFICATIONS  **
+      use mpi
       use variables
-      
+      use nctoys, only: getUnixTime
       implicit none
-      include "omp_lib.h"  ! PSG: including OpenMP library
+      !!include "omp_lib.h"  ! PSG: including OpenMP library
       include    'parameters.inc'
       integer i,j,k,isamp,jj,jsamp,nf,nz, ! PSG: nx, ny out to the module
      $n_verify_input,nlev, !,ngridx,ngridy,nlyr
@@ -213,7 +214,7 @@ C     !PSG: Following temporal varaibles is to include NetCDF time depending
      $      N_0grauDgrau, EM_grau,SD_rain, N_0rainD
        namelist/inputobs/elevations
        
-       integer istatus
+       integer istatus, err, numprocs, rank, nstart, ncycle
        
 C     !PSG: -- end of definition for NetCDF temporal variables
 
@@ -288,32 +289,44 @@ c     WRITE (18,*) nx_in,ny_in,ny_in,ny_fin,tau_min,tau_max
      $         EM_grau,SD_rain, N_0rainD !N_0 are for the distr of snow/grau diameter
        endif   ! PSG: end for input parameters
 
-        PHASEFLAG=.true.
-C        LAM=299.7925/freq !mm 
-                
-        print*,'netCDF input files is '//input_file
+       PHASEFLAG=.true.
+C     LAM=299.7925/freq !mm 
+
+!     MPI inititalization
+       call MPI_Init(err)
+       call MPI_Comm_size(MPI_COMM_WORLD, numprocs, err)
+       call MPI_Comm_rank(MPI_COMM_WORLD, rank, err)
+
+       if(rank.EQ.0) then
+          print*,'netCDF input files is '//input_file
 C     !PSG: Calling the NetCDF routine to read data
-        select case(trim(input_type) )
-        case('wrf')
-           call read_wrf(len_trim(input_file), input_file,
-     $          deltaxy, origin_str)
+          select case(trim(input_type) )
+       case('wrf')
+          call read_wrf(len_trim(input_file), input_file,
+     $         deltaxy, origin_str)
 
-        case('wyors')
-           STOP 'WyoSonde input needs adaptation'
-        case('arome')
-           call read_arome(len_trim(input_file), input_file,
-     $          deltaxy, origin_str)
+       case('wyors')
+          STOP 'WyoSonde input needs adaptation'
+       case('arome')
+          call read_arome(len_trim(input_file), input_file,
+     $         deltaxy, origin_str)
 
-        case default
-           STOP 'wrong input_type! support: wrf, arome or wyors'
-        end select
+       case default
+          STOP 'wrong input_type! support: wrf, arome or wyors'
+       end select
+       
+      end if
 
-        ! PSG: Checking if customized grid size has been given in 'input'
-        if(n_freq.LT.1.OR.n_freq.GT.20) then
-           write(*,*) 'Input variable n_freq out of bounds!'
-           write(*,*) 'n_freq needs to be >1 and max 20'
-           stop 'Wrong variable in input parameter file'
-        end if
+C     Broadcasting loaded data:
+      call MPI_Barrier(MPI_COMM_WORLD, err)      
+      call Broadcast_variables(err)
+
+! PSG: Checking if customized grid size has been given in 'input'
+      if(n_freq.LT.1.OR.n_freq.GT.20) then
+         write(*,*) 'Input variable n_freq out of bounds!'
+         write(*,*) 'n_freq needs to be >1 and max 20'
+         stop 'Wrong variable in input parameter file'
+      end if
         
         OUTLEVELS(1)=1          ! PSG: moved from befor call RT3 to here
         OUTLEVELS(2)=nlyr+1     ! PSG: N_lay_cut+1
@@ -352,8 +365,10 @@ C     NetCDF output file definition (creating one Ncdf file per frequency):
      $       'x'//xstr1//'-'//xstr2//'y'//ystr1//'-'//ystr2//'_'//     !micro_str//'_'
      $       trim(input_file(j_temp:))
         
-        write(*,*) 'Creating NetCDF '//trim(NCDFOUT)
-        write(*,*) 'ntime=',ntime,'; nlayer=',nlyr,'; nfreq=',n_freq
+        ! *** CREATING OUTPUT netCDF:
+        if(rank.eq.0) then
+           write(*,*) 'Creating NetCDF '//trim(NCDFOUT)
+           write(*,*) 'ntime=',ntime,'; nlayer=',nlyr,'; nfreq=',n_freq
 
 c$$$        call createncdf(len_trim(NCDFOUT), trim(NCDFOUT),
 c$$$     $       NUMMU, n_freq, NSTOKES, nlyr,
@@ -362,12 +377,15 @@ c$$$     $       FREQ(1:n_freq), input_file, micro_str,
 c$$$     $       real(hgt_tmp(:, :, 0 , 1), 4),
 c$$$     $       lat, lon, trim(origin_str) )
 
-        call createncdf(len_trim(NCDFOUT), trim(NCDFOUT),
-     $       NUMMU, NSTOKES,
-     $       input_file, micro_str,
-     $       trim(origin_str) )
 
-        print*, 'After creating netcdf'
+           call createncdf(len_trim(NCDFOUT), trim(NCDFOUT),
+     $          NUMMU, NSTOKES,
+     $          input_file, micro_str,
+     $          trim(origin_str) )
+
+           print*, 'After creating netcdf'
+        end if
+        call MPI_BARRIER( MPI_COMM_WORLD, err)        
         allocate(LYR_TEMP(0:nlyr), LYR_PRES(0:nlyr),
      $       REL_HUM(nlyr), KEXTATMO(ngridx, ngridy, nlyr),
      $       AVGPRESSURE(nlyr), VAPORPRESSURE(nlyr) )
@@ -395,11 +413,18 @@ c$$$     $       lat, lon, trim(origin_str) )
         allocate(relhum_lev(ngridx,ngridy,0:nlyr))
 
 C     !PSG: -- end of NetCDF reading routine
-        call omp_set_num_threads(4)
+        !!!PSG- call omp_set_num_threads(4)
 C     C!$OMP PARALLEL NUM_THREADS(1) PRIVAD(AUIOF,BUIOF)
  !$OMP PARALLEL DO
 
-        do 777 ifreq=1, n_freq  ! PSG: include Frequency loop
+        nstart = 1 + rank*floor(real(n_freq)/numprocs)
+        if(rank .eq. numprocs-1) then
+           ncycle = n_freq
+        else
+           ncycle = (rank + 1)*floor(real(n_freq)/numprocs)
+        end if
+        ! orginal: ifreq=1, n_freq ### ifreq = nstart, ncycle
+        do 777 ifreq = rank+1, n_freq, numprocs  ! PSG: include Frequency loop
            if (freq(ifreq).gt.100.d0) then
               write(frq_str,'(f6.2)') FREQ(ifreq)
               write(frq_idx,'(I6.6)') ifreq
@@ -412,8 +437,8 @@ c     write(*,29) frq_str
            
 C     !PSG: Passing temporal variables to old variables (no time)
            DO 656, timeidx = 1, ntime
-              write(*,*) 'running on thread: ', OMP_GET_THREAD_NUM(),
-     $             OMP_GET_MAX_THREADS()
+              !!!PSG- write(*,*) 'running on thread: ', OMP_GET_THREAD_NUM(),
+     !!!PSG- $             OMP_GET_MAX_THREADS()
 
               ! Initializing level variables for this timeidx:
               hgt_lev = hgt_tmp(:,:,:, timeidx)
@@ -935,12 +960,13 @@ C     summing up the Legendre coefficient
 c     writing no file            
 
             else                !there are hydrometeor present : a PH file is needed    
-
-               FILE_PH(nz)='../output/tmp/PHlev'//Nzstr//'f'//frq_str ! PSG: add 'temp/'
+               FILE_PH(nz)='../output/tmp/PH'//xstr//ystr//
+     $              'lev'//Nzstr//'f'//frq_str
+C               FILE_PH(nz)='../output/tmp/PHlev'//Nzstr//'f'//frq_str ! PSG: add 'temp/'
 
 c     write(18,*)'apri file',Nlegen,NLEGENhl,
 c     $ NLEGENcw,NLEGENci,NLEGENrr,NLEGENsn,NLEGENgr
-               BUIO = 31 + OMP_GET_THREAD_NUM() ! PSG: included for OpenMP
+               BUIO = 31+rank !!!PSG- + OMP_GET_THREAD_NUM() ! PSG: included for OpenMP
                OPEN(unit=BUIO,file =file_PH(nz), STATUS = 'unknown',
      $              form='FORMATTED') ! PSG: 31 -> BUIO and here on til close(BUIO)
                write(BUIO,*) kexttot(nx,ny,nz),'   EXINCTION'
@@ -994,7 +1020,7 @@ c     $ NLEGENcw,NLEGENci,NLEGENrr,NLEGENsn,NLEGENgr
  1009    end do                 !end of cycle over the vertical layers
 
 C     Preparation of the PROFILE file  (needed by RT3)
-         AUIOF = 21 + OMP_GET_THREAD_NUM() ! PSG: include Thread-dependent file unit
+         AUIOF = 21+rank !!!PSG- + OMP_GET_THREAD_NUM() ! PSG: include Thread-dependent file unit
          OPEN(AUIOF,FILE=file_profile,FORM='FORMATTED',STATUS='unknown') ! PSG: 21 -> AUIOF
          do 577  nz = nlyr,1,-1 ! PSG: N_lay_cut,1,-1 
             str1=''''
@@ -1057,12 +1083,16 @@ C     $        //'y'//ystr//'f'//frq_idx   ! PSG: added frq_str  (old version)
       
          OUT_FILE= FILEOUT1
 
-C        write(*,*) 'output file is: ', OUT_FILE
+C         write(*,*) 'output_file RT3 is: ', OUT_FILE
 
 c$$$  NOUTLEVELS=2  ! PSG: comment out, moved to the begining of code 
 c$$$  OUTLEVELS(1)=1
 c$$$  OUTLEVELS(2)=nlyr+1 ! PSG: N_lay_cut+1
 C     write(*,*) 'entra a '//FILE_profile//' com outlevels=',OUTLEVELS   ! PSG: test
+
+         print*, 'Date, x-grid, y-grid, freq dim has: ',
+     $        getUnixTime(UnixTime(timeidx) ),
+     $        nx, ny, Freq(ifreq)
 
          call  RT3(NSTOKES, NUMMU,AZIORDER, MU_VALUES,
      .        src_code,   FILE_profile, out_file,
@@ -1073,10 +1103,10 @@ C     write(*,*) 'entra a '//FILE_profile//' com outlevels=',OUTLEVELS   ! PSG: 
      .        NOUTLEVELS, OUTLEVELS,NUMAZIMUTHS,timeidx)
 
          
-         close(28)
+C         close(28)
 
  646  enddo                     ! end over nx_grid and ny_grid 
-
+      !!call MPI_BARRIER( MPI_COMM_WORLD, err)
       call MP_storencdf(NCDFOUT, timeidx, ifreq)
 
 c$$$      call MP_storencdf(NCDFOUT, timeidx, ifreq, ny, nx,
@@ -1089,17 +1119,19 @@ c$$$     $     windvel_tmp(nx,ny,:NLYR,timeidx),
 c$$$     $     kextcloud(nx,ny,:), KEXTATMO, kexttot(nx,ny,:),
 c$$$     $     salbtot(nx,ny,:), back(nx,ny,:), g_coeff(nx,ny,:) )
     
- 656  continue                  ! end over time index
+ 656  enddo !! PSG: continue                  ! end over time index
 
  777  enddo                     ! end over frequency index
  !$OMP END DO
-
+    
       deallocate(temp_tmp, press_tmp, relhum_tmp, mixr_tmp)
       deallocate(cloud_water_tmp, rain_water_tmp, cloud_ice_tmp)
       deallocate(snow_tmp, graupel_tmp, windvel_tmp, winddir_tmp)
       deallocate(qidx)
       deallocate(UnixTime)
-          
+!     ! MPI finalization
+      call MPI_Finalize(err)
+      
       STOP
       END        
 C     *********************************************************
@@ -1196,13 +1228,13 @@ c       hght_lev_new=new height vectors
 
 
 
-          INTEGER FUNCTION LENGTH(STRING) 
-cReturns length of string ignoring trailing blanks 
+      INTEGER FUNCTION LENGTH(STRING) 
+c     Returns length of string ignoring trailing blanks 
       CHARACTER*(*) STRING 
       DO 15, I = LEN(STRING), 1, -1 
          IF(STRING(I:I) .NE. ' ') GO TO 20 
-15    CONTINUE 
-20    LENGTH = I 
+ 15   CONTINUE 
+ 20   LENGTH = I 
       END 
 
 
