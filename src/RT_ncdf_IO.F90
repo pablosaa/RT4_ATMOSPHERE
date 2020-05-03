@@ -698,6 +698,7 @@ subroutine read_arome(ncflen, ncfile, del_xy, origin_str)
      case default
         print*, 'WARNING: AROME variable ', trim(arome_name(i)),' not recognized.'
      end select
+     call check_nc(status, trim(arome_name(i)), .true.)
   end do
 
   ! 1) Converting sigma_hybrid to pressure levels

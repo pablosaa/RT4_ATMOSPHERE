@@ -66,7 +66,7 @@ C                    **  RADTRAN I/O SPECIFICATIONS  **
       use variables
       use nctoys, only: getUnixTime
       implicit none
-      !!include "omp_lib.h"  ! PSG: including OpenMP library
+
       include    'parameters.inc'
       integer i,j,k,isamp,jj,jsamp,nf,nz, ! PSG: nx, ny out to the module
      $n_verify_input,nlev, !,ngridx,ngridy,nlyr
@@ -74,7 +74,7 @@ C                    **  RADTRAN I/O SPECIFICATIONS  **
       character Nzstr*3,xstr*3,ystr*3,   ! PSG: Nzstr*2
      $ xstr1*3,ystr1*3,xstr2*3,ystr2*3,
      $ frq_str*5,theta_str*3 ,H_str*3,surf_type*10
-      character input_type*5, input_file*99, micro_str*31,   ! PSG: original was input_file*99, frq_str*4
+      character input_type*5, input_file*120, micro_str*31,   ! PSG: original was input_file*99, frq_str*4
      $ SP_str*3,str1*1, DELTAM*1,
      $file_profile2*78,SD_snow*3,EM_snow*5,SD_grau*3,EM_grau*5,
      $ SD_rain*3,N0snowstr*3,N0graustr*3,N0rainstr*3
@@ -437,8 +437,6 @@ c     write(*,29) frq_str
            
 C     !PSG: Passing temporal variables to old variables (no time)
            DO 656, timeidx = 1, ntime
-              !!!PSG- write(*,*) 'running on thread: ', OMP_GET_THREAD_NUM(),
-     !!!PSG- $             OMP_GET_MAX_THREADS()
 
               ! Initializing level variables for this timeidx:
               hgt_lev = hgt_tmp(:,:,:, timeidx)
@@ -1020,7 +1018,7 @@ c     $ NLEGENcw,NLEGENci,NLEGENrr,NLEGENsn,NLEGENgr
  1009    end do                 !end of cycle over the vertical layers
 
 C     Preparation of the PROFILE file  (needed by RT3)
-         AUIOF = 21+rank !!!PSG- + OMP_GET_THREAD_NUM() ! PSG: include Thread-dependent file unit
+         AUIOF = 21+rank  ! PSG: include Thread-dependent file unit
          OPEN(AUIOF,FILE=file_profile,FORM='FORMATTED',STATUS='unknown') ! PSG: 21 -> AUIOF
          do 577  nz = nlyr,1,-1 ! PSG: N_lay_cut,1,-1 
             str1=''''
